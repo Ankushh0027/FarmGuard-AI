@@ -4,9 +4,10 @@ Contains explicit formulas and centralized assumptions for irrigation requiremen
 water volume savings, crop residue generation, and environmental footprint metrics.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from app.models.farm import (
     FarmInput,
+    CropWaterRequirement,
     IrrigationRecommendation,
     WaterAnalysis,
     ResidueEstimate,
@@ -97,7 +98,9 @@ CROP_DATA: Dict[str, Dict[str, Any]] = {
 SOIL_DATA: Dict[str, Dict[str, Any]] = {
     "alluvial": {"retention_factor": 1.00, "drainage": "Moderate", "description": "Fertile floodplain soil with balanced drainage"},
     "loamy": {"retention_factor": 1.00, "drainage": "Optimal", "description": "Ideal soil texture with high moisture holding capacity"},
+    "sandy loam": {"retention_factor": 0.85, "drainage": "Moderately Fast", "description": "Permeable sandy-loam with moderate water holding capacity"},
     "clayey": {"retention_factor": 1.20, "drainage": "Slow", "description": "Dense texture; holds water longer, lower evaporation rate"},
+    "clay loam": {"retention_factor": 1.10, "drainage": "Moderate-Slow", "description": "Heavy loam with good nutrient and water retention"},
     "sandy": {"retention_factor": 0.80, "drainage": "Fast", "description": "High porosity; low water holding capacity requiring split doses"},
     "black": {"retention_factor": 1.25, "drainage": "Very Slow", "description": "High swell-shrink clay (Vertisols) with superior water retention"},
     "red": {"retention_factor": 0.90, "drainage": "Moderately Fast", "description": "Permeable soil requiring moderate irrigation frequency"},
@@ -107,6 +110,35 @@ SOIL_DATA: Dict[str, Dict[str, Any]] = {
 # ============================================================================
 # DETERMINISTIC CALCULATION FUNCTIONS
 # ============================================================================
+
+def get_crop_water_requirement(crop: str, soil_type: Optional[str] = "alluvial") -> CropWaterRequirement:
+    """Retrieve baseline crop water requirements, soil target moisture, and retention dynamics."""
+    crop_norm = crop.strip().lower()
+    if crop_norm not in CROP_DATA:
+        supported = list(CROP_DATA.keys())
+        raise ValueError(f"Unsupported crop '{crop}'. Supported crops: {', '.join(supported)}")
+
+    crop_info = CROP_DATA[crop_norm]
+    soil_norm = soil_type.strip().lower() if soil_type else "alluvial"
+    soil_info = SOIL_DATA.get(soil_norm, SOIL_DATA.get("loamy", {"retention_factor": 1.0}))
+
+    retention_factor = soil_info.get("retention_factor", 1.0)
+    adjusted_depth = round(crop_info["base_irrigation_depth_mm"] / retention_factor, 1)
+
+    return CropWaterRequirement(
+        crop=crop_norm,
+        base_irrigation_depth_mm=crop_info["base_irrigation_depth_mm"],
+        target_moisture_percent=crop_info["target_moisture_percent"],
+        critical_moisture_percent=crop_info["critical_moisture_percent"],
+        soil_type=soil_norm,
+        soil_retention_factor=retention_factor,
+        adjusted_irrigation_depth_mm=adjusted_depth,
+        description=(
+            f"{crop_norm.capitalize()} baseline single irrigation requirement is {crop_info['base_irrigation_depth_mm']} mm, "
+            f"adjusted to {adjusted_depth} mm for {soil_norm} soil (retention: {retention_factor}x)."
+        ),
+    )
+
 
 def calculate_irrigation(farm_input: FarmInput) -> IrrigationRecommendation:
     """Calculate deterministic irrigation depth recommendation in mm based on soil moisture and rain forecast."""
@@ -130,7 +162,6 @@ def calculate_irrigation(farm_input: FarmInput) -> IrrigationRecommendation:
     raw_requirement_mm = (base_depth * depletion_ratio) / soil_retention
 
     # Rain offset calculation (effective rain credit)
-    # If rain probability >= 60%, credit up to 25mm of natural irrigation
     if rain_prob >= 0.70:
         expected_rain_offset_mm = round(rain_prob * 30.0, 1)
     elif rain_prob >= 0.40:
@@ -192,12 +223,13 @@ def calculate_irrigation(farm_input: FarmInput) -> IrrigationRecommendation:
 def calculate_water_savings(farm_input: FarmInput, recommended_mm: float) -> WaterAnalysis:
     """Calculate water volumes in liters and quantify conservation metrics."""
     area = farm_input.area_acres
-    current_mm = farm_input.current_irrigation_mm
+    current_mm = max(0.0, farm_input.current_irrigation_mm)
+    recommended_mm_val = max(0.0, recommended_mm)
 
     current_liters = round(current_mm * area * LITERS_PER_ACRE_MM, 1)
-    recommended_liters = round(recommended_mm * area * LITERS_PER_ACRE_MM, 1)
+    recommended_liters = round(recommended_mm_val * area * LITERS_PER_ACRE_MM, 1)
 
-    # Water savings (only positive if current exceeds recommended, else 0)
+    # Water savings guaranteed non-negative
     if current_liters > recommended_liters:
         savings_liters = round(current_liters - recommended_liters, 1)
         savings_percent = round((savings_liters / current_liters) * 100.0, 1) if current_liters > 0 else 0.0
@@ -245,7 +277,7 @@ def calculate_environmental_impact(
     co2e_avoided = round(residue_estimate.estimated_residue_tonnes * crop_info["co2_kg_per_tonne_burned"], 1)
     pm25_avoided = round(residue_estimate.estimated_residue_tonnes * crop_info["pm25_kg_per_tonne_burned"], 2)
 
-    water_saved_liters = water_analysis.water_savings_liters
+    water_saved_liters = max(0.0, water_analysis.water_savings_liters)
     water_saved_m3 = round(water_saved_liters / 1000.0, 2)
 
     soil_benefit = (
