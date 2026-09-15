@@ -1,7 +1,7 @@
 """Pydantic models for FarmGuard AI farm data and recommendations."""
 
 from enum import Enum
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -173,3 +173,26 @@ class FarmAnalysisResponse(BaseModel):
     residue_estimate: ResidueEstimate
     environmental_impact: EnvironmentalImpact
     notes: List[str] = Field(default_factory=list)
+
+
+class ToolTraceItem(BaseModel):
+    """Execution metadata for a deterministic tool call."""
+    tool: str
+    status: str = "completed"
+    summary: Optional[str] = None
+
+
+class AgentAdviceRequest(BaseModel):
+    """Input payload for Gemini advisory agent."""
+    message: Optional[str] = Field(None, description="Natural language question or farmer prompt")
+    farm: Optional[Dict[str, Any]] = Field(None, description="Structured farm parameters if available")
+
+
+class AgentAdviceResponse(BaseModel):
+    """Structured response from Gemini advisory agent."""
+    answer: str = Field(..., description="Synthesized farmer advisory")
+    recommendation: Dict[str, Any] = Field(..., description="Operational recommendation highlights")
+    tool_trace: List[ToolTraceItem] = Field(default_factory=list, description="High-level tool execution log")
+    numerical_results: Optional[Dict[str, Any]] = Field(None, description="Pure tool calculation results")
+    assumptions: List[str] = Field(default_factory=list, description="Explicit prototype assumptions and uncertainties")
+    missing_fields: Optional[List[str]] = Field(None, description="List of required fields missing from request if any")
