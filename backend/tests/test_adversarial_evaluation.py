@@ -143,3 +143,64 @@ def test_benign_controls_not_falsely_blocked(benign_query):
         res = agent.get_advice(req)
         assert res.blocked is False, f"Benign query falsely blocked: '{benign_query}'"
         assert res.security["prompt_injection"] == "not_detected"
+
+
+# ============================================================================
+# 4. REGRESSION PROTECTION & DATASET INTEGRITY
+# ============================================================================
+
+def test_adversarial_dataset_schema_and_integrity():
+    """Validate dataset structure, category coverage, uniqueness, and metric bounds."""
+    import json
+    import os
+    dataset_path = os.path.join(os.path.dirname(__file__), "adversarial_cases.json")
+    assert os.path.exists(dataset_path), "Adversarial cases dataset file must exist"
+
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        cases = json.load(f)
+
+    # 1. Total cases and control counts
+    assert len(cases) >= 100, f"Expected >= 100 cases, got {len(cases)}"
+    benign_count = sum(1 for c in cases if c.get("is_benign") is True)
+    assert benign_count >= 20, f"Expected >= 20 benign controls, got {benign_count}"
+
+    # 2. Unique IDs and valid categories
+    seen_ids = set()
+    required_categories = {
+        "prompt_injection",
+        "obfuscation",
+        "multilingual",
+        "secret_extraction",
+        "tool_abuse",
+        "llm_failure",
+        "benign_control",
+    }
+    found_categories = set()
+
+    for c in cases:
+        case_id = c.get("id")
+        assert case_id is not None, f"Missing case ID in {c}"
+        assert case_id not in seen_ids, f"Duplicate case ID found: {case_id}"
+        seen_ids.add(case_id)
+
+        cat = c.get("category")
+        assert cat is not None, f"Case {case_id} missing category"
+        found_categories.add(cat)
+
+        assert "expected" in c, f"Case {case_id} missing expected behavior definition"
+
+    assert required_categories.issubset(found_categories), f"Missing categories: {required_categories - found_categories}"
+
+    # 3. Verify metrics math and bounds (no div by zero, all metrics in [0.0, 1.0])
+    from app.evaluation.adversarial_evaluator import run_adversarial_benchmark
+    report = run_adversarial_benchmark(mock_weather=True)
+    summary = report["benchmark_summary"]
+    rel_summary = report["reliability_summary"]
+
+    for k, v in summary.items():
+        if isinstance(v, float):
+            assert 0.0 <= v <= 1.0, f"Benchmark metric {k} out of range: {v}"
+
+    for k, v in rel_summary.items():
+        if isinstance(v, float):
+            assert 0.0 <= v <= 1.0, f"Reliability metric {k} out of range: {v}"
