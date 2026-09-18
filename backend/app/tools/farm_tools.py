@@ -1,13 +1,14 @@
 """Agent-callable tool interfaces for FarmGuard AI.
 
 These tool functions serve as the standard interface for AI agent orchestration
-(such as Google Gemini function calling in future phases). All numerical
-calculations, unit conversions, and agronomic logic are strictly delegated to
-the deterministic calculation engine in `app.calculations.farm_calculator`.
+(such as Google Gemini function calling). All numerical calculations, unit conversions,
+and agronomic logic are strictly delegated to the deterministic calculation engine
+in `app.calculations.farm_calculator` and the live weather service in `app.services.weather_service`.
 """
 
 from typing import Dict, Any, Optional
 from app.models.farm import FarmInput
+from app.services.weather_service import fetch_weather_forecast
 from app.calculations.farm_calculator import (
     get_crop_water_requirement as _calc_get_crop_water_requirement,
     calculate_irrigation as _calc_calculate_irrigation,
@@ -16,6 +17,19 @@ from app.calculations.farm_calculator import (
     calculate_environmental_impact as _calc_calculate_environmental_impact,
     analyze_farm as _calc_analyze_farm,
 )
+
+
+def get_weather_forecast(location: str) -> Dict[str, Any]:
+    """Retrieve 24-48h weather forecast, precipitation amount (mm), and rain probability.
+
+    Args:
+        location: Indian state, district, or city name (e.g. 'Uttar Pradesh', 'Punjab', 'Ludhiana').
+
+    Returns:
+        Structured weather dictionary with status ('available' or 'unavailable'),
+        forecast_rainfall_mm, rainfall_probability, and data source.
+    """
+    return fetch_weather_forecast(location)
 
 
 def get_crop_water_requirement(
@@ -42,8 +56,9 @@ def calculate_irrigation(
     soil_type: str,
     current_irrigation_mm: float,
     location: str,
-    rainfall_probability: float,
-    soil_moisture_percent: float,
+    rainfall_probability: float = 0.0,
+    soil_moisture_percent: float = 50.0,
+    forecast_rainfall_mm: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Calculate the precise recommended irrigation depth (mm), operational urgency, and tactical guidance.
 
@@ -53,12 +68,13 @@ def calculate_irrigation(
         soil_type: Soil texture ('alluvial', 'loamy', 'sandy loam', 'clayey', 'sandy', 'black', 'red').
         current_irrigation_mm: Current farmer scheduled water application depth in mm (>= 0).
         location: Indian state or region (e.g. 'Uttar Pradesh', 'Punjab').
-        rainfall_probability: Forecast precipitation probability in next 24-48 hours (0.0 to 1.0 or 0 to 100%).
+        rainfall_probability: Forecast precipitation probability (0.0 to 1.0 or 0 to 100%).
         soil_moisture_percent: Current soil moisture level (0.0 to 100.0%).
+        forecast_rainfall_mm: Forecast precipitation amount in mm (if known).
 
     Returns:
         Dictionary containing recommended_irrigation_mm, status, urgency, action,
-        soil_depletion_percent, expected_rain_offset_mm, and clear explanation.
+        soil_depletion_percent, expected_rain_offset_mm, and explanation.
     """
     farm_input = FarmInput(
         crop=crop,
@@ -67,6 +83,7 @@ def calculate_irrigation(
         current_irrigation_mm=current_irrigation_mm,
         location=location,
         rainfall_probability=rainfall_probability,
+        forecast_rainfall_mm=forecast_rainfall_mm,
         soil_moisture_percent=soil_moisture_percent,
     )
     result = _calc_calculate_irrigation(farm_input)
@@ -82,6 +99,7 @@ def calculate_water_savings(
     location: str = "Uttar Pradesh",
     rainfall_probability: float = 0.0,
     soil_moisture_percent: float = 50.0,
+    forecast_rainfall_mm: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Quantify water application volumes in liters, water saved, and tubewell electricity/diesel hours saved.
 
@@ -94,6 +112,7 @@ def calculate_water_savings(
         location: Region (default: 'Uttar Pradesh').
         rainfall_probability: Rain forecast (default: 0.0).
         soil_moisture_percent: Soil moisture percent (default: 50.0).
+        forecast_rainfall_mm: Forecast precipitation depth in mm.
 
     Returns:
         Dictionary containing current_water_liters, recommended_water_liters,
@@ -106,6 +125,7 @@ def calculate_water_savings(
         current_irrigation_mm=current_irrigation_mm,
         location=location,
         rainfall_probability=rainfall_probability,
+        forecast_rainfall_mm=forecast_rainfall_mm,
         soil_moisture_percent=soil_moisture_percent,
     )
     result = _calc_calculate_water_savings(farm_input, recommended_mm=recommended_irrigation_mm)
@@ -120,17 +140,13 @@ def calculate_crop_residue(
     location: str = "Uttar Pradesh",
     rainfall_probability: float = 0.0,
     soil_moisture_percent: float = 50.0,
+    forecast_rainfall_mm: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Estimate total crop stubble/biomass generated, burning risk level, and eco-friendly management solutions.
 
     Args:
         crop: Crop name ('wheat', 'rice', 'maize', 'sugarcane').
         area_acres: Field size in acres (> 0).
-        soil_type: Soil texture (default: 'alluvial').
-        current_irrigation_mm: Water depth (default: 50.0).
-        location: Region (default: 'Uttar Pradesh').
-        rainfall_probability: Rain forecast (default: 0.0).
-        soil_moisture_percent: Soil moisture percent (default: 50.0).
 
     Returns:
         Dictionary with crop, area_acres, estimated_residue_tonnes, stubble_burning_risk,
@@ -143,6 +159,7 @@ def calculate_crop_residue(
         current_irrigation_mm=current_irrigation_mm,
         location=location,
         rainfall_probability=rainfall_probability,
+        forecast_rainfall_mm=forecast_rainfall_mm,
         soil_moisture_percent=soil_moisture_percent,
     )
     result = _calc_calculate_crop_residue(farm_input)
@@ -158,6 +175,7 @@ def calculate_environmental_impact(
     location: str = "Uttar Pradesh",
     rainfall_probability: float = 0.0,
     soil_moisture_percent: float = 50.0,
+    forecast_rainfall_mm: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Calculate environmental benefits including CO2e emissions avoided, PM2.5 avoided, and water saved.
 
@@ -166,10 +184,6 @@ def calculate_environmental_impact(
         area_acres: Field size in acres (> 0).
         current_irrigation_mm: Current scheduled water depth (mm).
         recommended_irrigation_mm: Recommended water depth (mm).
-        soil_type: Soil texture.
-        location: Region.
-        rainfall_probability: Rain forecast.
-        soil_moisture_percent: Soil moisture.
 
     Returns:
         Dictionary with co2e_avoided_kg, pm25_avoided_kg, water_saved_liters,
@@ -182,6 +196,7 @@ def calculate_environmental_impact(
         current_irrigation_mm=current_irrigation_mm,
         location=location,
         rainfall_probability=rainfall_probability,
+        forecast_rainfall_mm=forecast_rainfall_mm,
         soil_moisture_percent=soil_moisture_percent,
     )
     water_analysis = _calc_calculate_water_savings(farm_input, recommended_mm=recommended_irrigation_mm)
@@ -196,23 +211,11 @@ def analyze_farm_pipeline(
     soil_type: str,
     current_irrigation_mm: float,
     location: str,
-    rainfall_probability: float,
-    soil_moisture_percent: float,
+    rainfall_probability: float = 0.0,
+    soil_moisture_percent: float = 50.0,
+    forecast_rainfall_mm: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Execute the complete deterministic farm analysis pipeline (convenience orchestration tool).
-
-    Args:
-        crop: Crop name.
-        area_acres: Field size in acres (> 0).
-        soil_type: Soil texture.
-        current_irrigation_mm: Current scheduled water depth (mm).
-        location: Region.
-        rainfall_probability: Rain forecast (0.0-1.0 or 0-100%).
-        soil_moisture_percent: Soil moisture (0-100%).
-
-    Returns:
-        Dictionary with complete aggregated farm analysis response.
-    """
+    """Execute the complete deterministic farm analysis pipeline."""
     farm_input = FarmInput(
         crop=crop,
         area_acres=area_acres,
@@ -220,6 +223,7 @@ def analyze_farm_pipeline(
         current_irrigation_mm=current_irrigation_mm,
         location=location,
         rainfall_probability=rainfall_probability,
+        forecast_rainfall_mm=forecast_rainfall_mm,
         soil_moisture_percent=soil_moisture_percent,
     )
     result = _calc_analyze_farm(farm_input)

@@ -1,7 +1,7 @@
-"""Pydantic models for FarmGuard AI farm data and recommendations."""
+"""Pydantic models for FarmGuard AI farm data, recommendations, and agent communication."""
 
 from enum import Enum
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Union
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -51,8 +51,13 @@ class FarmInput(BaseModel):
     current_irrigation_mm: float = Field(..., ge=0, description="Current planned or scheduled irrigation depth in mm")
     location: str = Field(..., min_length=2, description="Farm location/state (e.g. Uttar Pradesh, Punjab, Haryana)")
     rainfall_probability: float = Field(
-        ...,
+        0.0,
         description="Forecasted rainfall probability within next 24-48 hours (0.0 to 1.0 or 0 to 100%)"
+    )
+    forecast_rainfall_mm: Optional[float] = Field(
+        None,
+        ge=0.0,
+        description="Forecast precipitation depth in mm from weather service (if available)"
     )
     soil_moisture_percent: float = Field(
         ...,
@@ -86,6 +91,8 @@ class FarmInput(BaseModel):
     @field_validator("rainfall_probability", mode="before")
     @classmethod
     def validate_rainfall_probability(cls, v: Any) -> float:
+        if v is None:
+            return 0.0
         try:
             val = float(v)
         except (TypeError, ValueError):
@@ -117,7 +124,8 @@ class IrrigationRecommendation(BaseModel):
     urgency: str = Field(..., description="Urgency level: 'Low', 'Medium', 'High', 'Critical'")
     action: str = Field(..., description="Direct tactical action for the farmer")
     soil_depletion_percent: float = Field(..., description="Calculated moisture deficit from field capacity")
-    expected_rain_offset_mm: float = Field(..., description="Estimated effective rainfall offset")
+    expected_rain_offset_mm: float = Field(0.0, description="Effective rainfall deduction applied in mm")
+    rain_forecast_status: str = Field("probability_only", description="'amount_known', 'probability_only', 'no_rain'")
     explanation: str = Field(..., description="Clear deterministic explanation of the recommendation")
 
 
@@ -165,6 +173,12 @@ class EnvironmentalImpact(BaseModel):
     soil_health_benefit: str
 
 
+class AssumptionItem(BaseModel):
+    """Structured assumption metadata categorizing models, weather, and estimates."""
+    type: str = Field(..., description="'weather', 'agronomic_model', 'environmental_impact', 'input'")
+    text: str = Field(..., description="Explanation of the assumption / prototype limitation")
+
+
 class FarmAnalysisResponse(BaseModel):
     """Complete aggregated farm analysis response."""
     farm_input: FarmInput
@@ -172,6 +186,7 @@ class FarmAnalysisResponse(BaseModel):
     water_analysis: WaterAnalysis
     residue_estimate: ResidueEstimate
     environmental_impact: EnvironmentalImpact
+    assumptions: List[AssumptionItem] = Field(default_factory=list)
     notes: List[str] = Field(default_factory=list)
 
 
@@ -194,5 +209,5 @@ class AgentAdviceResponse(BaseModel):
     recommendation: Dict[str, Any] = Field(..., description="Operational recommendation highlights")
     tool_trace: List[ToolTraceItem] = Field(default_factory=list, description="High-level tool execution log")
     numerical_results: Optional[Dict[str, Any]] = Field(None, description="Pure tool calculation results")
-    assumptions: List[str] = Field(default_factory=list, description="Explicit prototype assumptions and uncertainties")
+    assumptions: List[AssumptionItem] = Field(default_factory=list, description="Explicit categorized assumptions and uncertainties")
     missing_fields: Optional[List[str]] = Field(None, description="List of required fields missing from request if any")

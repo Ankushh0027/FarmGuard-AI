@@ -1,7 +1,8 @@
 """Deterministic agricultural calculations for FarmGuard AI.
 
-Contains explicit formulas and centralized assumptions for irrigation requirement,
-water volume savings, crop residue generation, and environmental footprint metrics.
+Contains explicit agronomic formulas and centralized prototype assumptions for
+irrigation requirements, water volume conservation, crop residue generation,
+and environmental footprint metrics.
 """
 
 from typing import Dict, Any, List, Optional
@@ -12,23 +13,22 @@ from app.models.farm import (
     WaterAnalysis,
     ResidueEstimate,
     EnvironmentalImpact,
+    AssumptionItem,
     FarmAnalysisResponse,
 )
 
 # ============================================================================
-# CENTRALIZED AGRONOMIC ASSUMPTIONS & CONSTANTS
+# CENTRALIZED AGRONOMIC ASSUMPTIONS & CONSTANTS (PROTOTYPE BASELINES)
 # ============================================================================
-# 1 acre = 4,046.86 square meters
-# 1 mm of water depth over 1 sq meter = 1 Liter
-# Therefore: 1 acre-mm = 4,046.86 Liters
+# Exact geometric conversion: 1 acre = 4,046.8564 m²; 1 mm depth on 1 m² = 1 L
 LITERS_PER_ACRE_MM = 4046.8564
 
-# Average discharge capacity of standard North Indian agricultural tubewell (5 HP pump): ~28,000 Liters/hour
+# Prototype assumption: Average discharge capacity of standard 5 HP agricultural tubewell pump
 TUBEWELL_PUMP_DISCHARGE_LPH = 28000.0
 
-# Crop specific assumptions
-# (Baseline single irrigation depth demand in mm, target moisture %, critical moisture threshold %,
-# residue tonnes/acre, burning emission factors in kg/tonne, economic valuation in INR/tonne)
+# Crop prototype characteristics:
+# Baseline single irrigation depth (mm), target moisture %, critical stress threshold %,
+# residue yield (tonnes/acre), burning emissions factors (kg/tonne), and fodder/market valuation (INR/tonne).
 CROP_DATA: Dict[str, Dict[str, Any]] = {
     "wheat": {
         "base_irrigation_depth_mm": 50.0,
@@ -41,7 +41,7 @@ CROP_DATA: Dict[str, Dict[str, Any]] = {
         "economic_value_inr_per_tonne": 1200.0,
         "recommended_practices": [
             "In-situ stubble retention with Super SMS / Happy Seeder for direct wheat/next crop sowing",
-            "Mulching to preserve topsoil moisture and prevent evaporative loss by up to 20%",
+            "Mulching to preserve topsoil moisture and reduce evaporative loss",
             "Apply Pusa Bio-decomposer spray for accelerated in-field decomposition",
             "Collection for cattle fodder (dry Bhoosa) or biomass briquetting"
         ]
@@ -94,7 +94,7 @@ CROP_DATA: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# Soil moisture retention capacity coefficients
+# Soil moisture retention capacity coefficients (prototype estimates)
 SOIL_DATA: Dict[str, Dict[str, Any]] = {
     "alluvial": {"retention_factor": 1.00, "drainage": "Moderate", "description": "Fertile floodplain soil with balanced drainage"},
     "loamy": {"retention_factor": 1.00, "drainage": "Optimal", "description": "Ideal soil texture with high moisture holding capacity"},
@@ -141,7 +141,13 @@ def get_crop_water_requirement(crop: str, soil_type: Optional[str] = "alluvial")
 
 
 def calculate_irrigation(farm_input: FarmInput) -> IrrigationRecommendation:
-    """Calculate deterministic irrigation depth recommendation in mm based on soil moisture and rain forecast."""
+    """Calculate deterministic irrigation depth recommendation in mm based on soil moisture and precipitation data.
+
+    Scientific Hardening Rules:
+    - If forecast_rainfall_mm is provided: Uses the actual forecasted depth in the water balance equation.
+    - If forecast_rainfall_mm is None (probability only): Does NOT manufacture a rainfall amount.
+      Treats rainfall_probability strictly as a risk/context factor.
+    """
     crop_info = CROP_DATA.get(farm_input.crop, CROP_DATA["wheat"])
     soil_info = SOIL_DATA.get(farm_input.soil_type, SOIL_DATA["loamy"])
 
@@ -152,62 +158,95 @@ def calculate_irrigation(farm_input: FarmInput) -> IrrigationRecommendation:
 
     current_moisture = farm_input.soil_moisture_percent
     rain_prob = farm_input.rainfall_probability
+    forecast_rain_mm = farm_input.forecast_rainfall_mm
 
-    # Calculate soil moisture deficit percentage
+    # 1. Soil moisture deficit calculation
     deficit_percent = max(0.0, target_moisture - current_moisture)
     depletion_ratio = deficit_percent / target_moisture if target_moisture > 0 else 0.0
 
-    # Base water requirement adjustment
-    # Higher soil retention means less water is needed to restore root-zone field capacity
+    # Raw water requirement to restore field capacity (accounting for soil retention)
     raw_requirement_mm = (base_depth * depletion_ratio) / soil_retention
 
-    # Rain offset calculation (effective rain credit)
-    if rain_prob >= 0.70:
-        expected_rain_offset_mm = round(rain_prob * 30.0, 1)
-    elif rain_prob >= 0.40:
-        expected_rain_offset_mm = round(rain_prob * 18.0, 1)
-    else:
-        expected_rain_offset_mm = round(rain_prob * 5.0, 1)
-
-    # Net recommended irrigation
-    net_irrigation_mm = max(0.0, raw_requirement_mm - expected_rain_offset_mm)
-    recommended_mm = round(net_irrigation_mm, 1)
-
-    # Determine status, urgency, and actionable guidance
+    # 2. Case Analysis: Rainfall Forecast Depth vs. Probability Only
     if current_moisture >= target_moisture:
         recommended_mm = 0.0
         status = "Optimal Soil Moisture"
         urgency = "Low"
         action = "Hold irrigation. Soil moisture is at or above target capacity."
+        rain_status = "amount_known" if forecast_rain_mm is not None else "no_rain"
+        expected_rain_offset_mm = 0.0
         explanation = (
             f"Current soil moisture ({current_moisture:.1f}%) meets or exceeds the target ({target_moisture:.1f}%) "
             f"for {farm_input.crop.capitalize()} on {farm_input.soil_type} soil. No additional irrigation required."
         )
-    elif rain_prob >= 0.70 and recommended_mm < 20.0:
-        recommended_mm = 0.0
-        status = "Postpone Irrigation (Rain Expected)"
-        urgency = "Low"
-        action = "Postpone irrigation. High probability of natural precipitation."
-        explanation = (
-            f"Upcoming rainfall probability is high ({rain_prob * 100:.0f}%). Expected natural rain offset of "
-            f"~{expected_rain_offset_mm} mm will fulfill soil moisture deficit without pumping."
-        )
-    elif current_moisture < critical_moisture:
-        status = "Irrigate Urgently"
-        urgency = "High" if current_moisture > (critical_moisture * 0.7) else "Critical"
-        action = f"Apply {recommended_mm} mm of irrigation across {farm_input.area_acres} acres immediately."
-        explanation = (
-            f"Soil moisture ({current_moisture:.1f}%) has fallen below critical threshold ({critical_moisture:.1f}%). "
-            f"Crop is experiencing water stress. Apply {recommended_mm} mm to restore root zone moisture."
-        )
+
+    elif forecast_rain_mm is not None:
+        # Case A: Actual forecasted precipitation amount in mm is available
+        rain_status = "amount_known"
+        expected_rain_offset_mm = round(min(raw_requirement_mm, max(0.0, forecast_rain_mm)), 1)
+        net_irrigation_mm = max(0.0, round(raw_requirement_mm - forecast_rain_mm, 1))
+
+        if forecast_rain_mm >= raw_requirement_mm:
+            recommended_mm = 0.0
+            status = "Postpone Irrigation (Forecast Rainfall Sufficient)"
+            urgency = "Low"
+            action = f"Postpone irrigation. Forecast precipitation (~{forecast_rain_mm:.1f} mm) is expected to satisfy the {raw_requirement_mm:.1f} mm moisture deficit."
+            explanation = (
+                f"Soil moisture deficit is {raw_requirement_mm:.1f} mm for {farm_input.crop.capitalize()}. "
+                f"Forecast rainfall amount ({forecast_rain_mm:.1f} mm) meets or exceeds this deficit without pumping."
+            )
+        elif net_irrigation_mm > 0:
+            recommended_mm = net_irrigation_mm
+            status = "Reduced Irrigation Recommended"
+            urgency = "Medium"
+            action = f"Apply reduced irrigation of {recommended_mm} mm across {farm_input.area_acres} acres."
+            explanation = (
+                f"Soil moisture deficit is {raw_requirement_mm:.1f} mm. Factoring in {forecast_rain_mm:.1f} mm of "
+                f"forecast rainfall reduces the net irrigation requirement to {recommended_mm} mm."
+            )
+        else:
+            recommended_mm = 0.0
+            status = "Hold Irrigation"
+            urgency = "Low"
+            action = "Hold irrigation based on forecast rainfall balance."
+            explanation = f"Water balance indicates net requirement is 0 mm with {forecast_rain_mm:.1f} mm forecast rain."
+
     else:
-        status = "Moderate Irrigation Recommended"
-        urgency = "Medium"
-        action = f"Schedule light irrigation of {recommended_mm} mm."
-        explanation = (
-            f"Moisture is moderately depleted ({deficit_percent:.1f}% below target) for {farm_input.crop.capitalize()}. "
-            f"Applying {recommended_mm} mm accounts for soil retention factor ({soil_retention}x) and {rain_prob * 100:.0f}% rain forecast."
-        )
+        # Case B: Only rainfall probability is available (precipitation depth is unknown)
+        # We do NOT fabricate a rainfall amount.
+        rain_status = "probability_only" if rain_prob > 0 else "no_rain"
+        expected_rain_offset_mm = 0.0
+        net_irrigation_mm = round(raw_requirement_mm, 1)
+        recommended_mm = net_irrigation_mm
+
+        if rain_prob >= 0.60:
+            status = "Check Local Forecast Before Irrigating"
+            urgency = "Medium"
+            action = (
+                f"Soil moisture deficit indicates {recommended_mm} mm is needed. Rain probability is high ({rain_prob * 100:.0f}%), "
+                f"but expected rainfall depth is unknown. Re-check local weather before full application."
+            )
+            explanation = (
+                f"Soil moisture ({current_moisture:.1f}%) is {deficit_percent:.1f}% below target for {farm_input.crop.capitalize()}. "
+                f"Rain probability is {rain_prob * 100:.0f}%, but precipitation amount is unconfirmed. "
+                f"Do not assume rain will fully satisfy the {recommended_mm} mm deficit without checking local radar/forecast depth."
+            )
+        elif current_moisture < critical_moisture:
+            status = "Irrigate Urgently"
+            urgency = "High" if current_moisture > (critical_moisture * 0.7) else "Critical"
+            action = f"Apply {recommended_mm} mm of irrigation across {farm_input.area_acres} acres immediately."
+            explanation = (
+                f"Soil moisture ({current_moisture:.1f}%) has fallen below critical threshold ({critical_moisture:.1f}%). "
+                f"Crop is experiencing moisture stress. Apply {recommended_mm} mm to restore root zone capacity."
+            )
+        else:
+            status = "Moderate Irrigation Recommended"
+            urgency = "Medium"
+            action = f"Schedule light irrigation of {recommended_mm} mm."
+            explanation = (
+                f"Moisture is moderately depleted ({deficit_percent:.1f}% below target) for {farm_input.crop.capitalize()}. "
+                f"Applying {recommended_mm} mm restores field capacity for {farm_input.soil_type} soil."
+            )
 
     return IrrigationRecommendation(
         recommended_irrigation_mm=recommended_mm,
@@ -216,6 +255,7 @@ def calculate_irrigation(farm_input: FarmInput) -> IrrigationRecommendation:
         action=action,
         soil_depletion_percent=round(deficit_percent, 1),
         expected_rain_offset_mm=expected_rain_offset_mm,
+        rain_forecast_status=rain_status,
         explanation=explanation,
     )
 
@@ -273,7 +313,7 @@ def calculate_environmental_impact(
     """Calculate carbon footprint avoidance, PM2.5 avoidance, and soil health improvements."""
     crop_info = CROP_DATA.get(farm_input.crop, CROP_DATA["wheat"])
 
-    # Avoided emissions by preventing in-situ stubble burning
+    # Estimated avoided emissions if open stubble burning is prevented
     co2e_avoided = round(residue_estimate.estimated_residue_tonnes * crop_info["co2_kg_per_tonne_burned"], 1)
     pm25_avoided = round(residue_estimate.estimated_residue_tonnes * crop_info["pm25_kg_per_tonne_burned"], 2)
 
@@ -282,7 +322,7 @@ def calculate_environmental_impact(
 
     soil_benefit = (
         f"In-situ incorporation of {residue_estimate.estimated_residue_tonnes} tonnes of {farm_input.crop} residue "
-        f"retains essential soil nitrogen, phosphorus, potassium (NPK) and boosts Soil Organic Carbon (SOC) by up to 0.15%."
+        f"preserves essential nitrogen, phosphorus, and potassium (NPK) and contributes to soil organic carbon replenishment."
     )
 
     return EnvironmentalImpact(
@@ -294,17 +334,62 @@ def calculate_environmental_impact(
     )
 
 
+def generate_assumptions(farm_input: FarmInput, irrigation_rec: IrrigationRecommendation) -> List[AssumptionItem]:
+    """Compile structured, transparent assumptions across weather, agronomy, and environment."""
+    items: List[AssumptionItem] = []
+
+    # Weather assumption
+    if farm_input.forecast_rainfall_mm is not None:
+        items.append(AssumptionItem(
+            type="weather",
+            text=f"Precipitation depth of {farm_input.forecast_rainfall_mm} mm used directly in root-zone water balance."
+        ))
+    elif farm_input.rainfall_probability > 0:
+        items.append(AssumptionItem(
+            type="weather",
+            text=f"Rainfall probability of {farm_input.rainfall_probability * 100:.0f}% is treated as a risk signal only; rainfall depth is unconfirmed."
+        ))
+    else:
+        items.append(AssumptionItem(
+            type="weather",
+            text="No immediate precipitation forecast factored into current calculation."
+        ))
+
+    # Agronomic model assumption
+    items.append(AssumptionItem(
+        type="agronomic_model",
+        text=f"Crop water baseline ({CROP_DATA.get(farm_input.crop, {}).get('base_irrigation_depth_mm', 50)} mm) and soil retention ({SOIL_DATA.get(farm_input.soil_type, {}).get('retention_factor', 1.0)}x) are prototype constants."
+    ))
+    items.append(AssumptionItem(
+        type="agronomic_model",
+        text="Volumetric water conversions use exact geometric constant: 1 acre-mm = 4,046.86 Liters."
+    ))
+
+    # Environmental / equipment assumptions
+    items.append(AssumptionItem(
+        type="environmental_impact",
+        text="Tubewell pumping hours assume a prototype 5 HP centrifugal pump discharge rate (~28,000 L/hr)."
+    ))
+    items.append(AssumptionItem(
+        type="environmental_impact",
+        text="Avoided CO2e and PM2.5 emissions reflect prototype combustion factors assuming 100% open-field burning prevention."
+    ))
+
+    return items
+
+
 def analyze_farm(farm_input: FarmInput) -> FarmAnalysisResponse:
     """Master pure function orchestrating the complete deterministic analysis pipeline."""
     irrigation_rec = calculate_irrigation(farm_input)
     water_analysis = calculate_water_savings(farm_input, irrigation_rec.recommended_irrigation_mm)
     residue_est = calculate_crop_residue(farm_input)
     env_impact = calculate_environmental_impact(farm_input, water_analysis, residue_est)
+    assumptions_list = generate_assumptions(farm_input, irrigation_rec)
 
     notes = [
-        "Calculation engine uses standardized North Indian agro-climatic assumptions (ICAR & PAU guidelines).",
-        "1 acre-mm corresponds precisely to 4,046.86 Liters of water.",
-        "Emissions avoided calculations reflect prevention of direct open-field stubble combustion."
+        "Calculations reflect deterministic prototype models and are not guaranteed real-world prescriptions.",
+        "Volumetric conversion uses standard 1 acre-mm = 4,046.86 Liters.",
+        "Weather recommendations should be validated against local meteorological radar before altering field irrigation."
     ]
 
     return FarmAnalysisResponse(
@@ -313,5 +398,6 @@ def analyze_farm(farm_input: FarmInput) -> FarmAnalysisResponse:
         water_analysis=water_analysis,
         residue_estimate=residue_est,
         environmental_impact=env_impact,
+        assumptions=assumptions_list,
         notes=notes,
     )

@@ -1,7 +1,7 @@
 """FarmGuard AI Gemini Agent Coordinator.
 
-Orchestrates deterministic farming calculation tools and uses Google Gemini
-to provide empathetic, transparent, and structured advisory to Indian farmers.
+Orchestrates live weather lookups and deterministic farming calculation tools.
+Uses Google Gemini to provide empathetic, transparent, and structured advisory.
 All numerical calculations originate strictly from the deterministic tool layer.
 """
 
@@ -13,14 +13,17 @@ from app.models.farm import (
     AgentAdviceRequest,
     AgentAdviceResponse,
     ToolTraceItem,
+    AssumptionItem,
 )
 from app.tools.farm_tools import (
+    get_weather_forecast,
     get_crop_water_requirement,
     calculate_irrigation,
     calculate_water_savings,
     calculate_crop_residue,
     calculate_environmental_impact,
 )
+from app.calculations.farm_calculator import generate_assumptions
 
 SYSTEM_PROMPT = """You are FarmGuard AI, an India-specific sustainable farming assistant.
 
@@ -29,7 +32,7 @@ CRITICAL ARCHITECTURE RULES:
 2. Clearly distinguish between:
    - Calculated tool results
    - Prototype model assumptions
-   - External weather data inputs
+   - External weather data inputs (distinguish rainfall probability % vs forecast precipitation depth in mm)
    - Estimated environmental impact
 3. Do NOT claim 'ICAR/PAU guidelines' as authoritative evidence; treat current agricultural constants as prototype assumptions.
 4. If the recommended irrigation is 0 mm, DO NOT say 'You definitely do not need irrigation.' Instead state:
@@ -40,6 +43,9 @@ REQUIRED OUTPUT STRUCTURE:
 RECOMMENDATION
 - Irrigation recommendation (depth and status)
 - Tactical timing and field action
+
+WEATHER CONTEXT
+- Weather data source & forecast precipitation amount (mm) or probability signal
 
 WATER IMPACT
 - Current water usage (in Liters)
@@ -59,7 +65,7 @@ WHY
 - 2 to 4 concise reasons directly citing the tool outputs (moisture level, rain forecast offset, soil retention factor)
 
 ASSUMPTIONS
-- Explicitly list prototype assumptions (e.g. 1 acre-mm = 4,046.86 L, standard 5 HP tubewell rate, model retention factors, single-cycle depth)
+- Clearly categorize prototype assumptions (weather forecast credit, baseline crop depths, soil retention factors, pumping rates)
 """
 
 
@@ -79,7 +85,7 @@ class FarmGuardAgent:
         if farm_dict:
             data.update(farm_dict)
 
-        # If some fields missing, attempt basic extraction from natural language message
+        # Attempt extraction from message text if fields are missing
         if message:
             msg = message.lower()
             if "crop" not in data:
@@ -108,6 +114,10 @@ class FarmGuardAgent:
                 m = re.search(r"(?:rain|rainfall|precipitation)(?:\s+probability|\s+chance)?(?:\s+is|\s*[:=])?\s*(\d+(?:\.\d+)?)\s*%", msg)
                 if m:
                     data["rainfall_probability"] = float(m.group(1))
+            if "forecast_rainfall_mm" not in data:
+                m = re.search(r"(?:forecast|rain|precipitation)\s*(?:depth|amount|of)?\s*(\d+(?:\.\d+)?)\s*mm", msg)
+                if m:
+                    data["forecast_rainfall_mm"] = float(m.group(1))
             if "location" not in data:
                 for loc in ["uttar pradesh", "punjab", "haryana", "bihar", "madhya pradesh", "rajasthan", "gujarat", "maharashtra"]:
                     if loc in msg:
@@ -121,12 +131,15 @@ class FarmGuardAgent:
             "soil_type",
             "current_irrigation_mm",
             "location",
-            "rainfall_probability",
             "soil_moisture_percent",
         ]
         missing = [f for f in required_fields if f not in data or data[f] is None]
         if missing:
             return None, missing
+
+        # Default rainfall probability to 0.0 if not provided
+        if "rainfall_probability" not in data or data["rainfall_probability"] is None:
+            data["rainfall_probability"] = 0.0
 
         try:
             farm_input = FarmInput(**data)
@@ -134,68 +147,95 @@ class FarmGuardAgent:
         except Exception:
             return None, missing
 
-    def _execute_tools(self, farm_input: FarmInput) -> Tuple[Dict[str, Any], List[ToolTraceItem]]:
+    def _execute_tools(self, farm_input: FarmInput) -> Tuple[Dict[str, Any], List[ToolTraceItem], FarmInput]:
         """Execute deterministic farm calculation tools and track execution trace."""
         tool_trace: List[ToolTraceItem] = []
+        active_input = farm_input
 
-        # 1. get_crop_water_requirement
+        # 1. Weather forecast lookup (if forecast_rainfall_mm was not explicitly provided by user)
+        if active_input.forecast_rainfall_mm is None and active_input.location:
+            weather_data = get_weather_forecast(location=active_input.location)
+            tool_trace.append(ToolTraceItem(tool="get_weather_forecast", status="completed"))
+
+            # If weather is available, attach live forecast precipitation
+            if weather_data.get("status") == "available" and weather_data.get("forecast_rainfall_mm") is not None:
+                updated_dict = active_input.model_dump()
+                updated_dict["forecast_rainfall_mm"] = weather_data["forecast_rainfall_mm"]
+                if updated_dict.get("rainfall_probability", 0.0) == 0.0 and weather_data.get("rainfall_probability") is not None:
+                    updated_dict["rainfall_probability"] = weather_data["rainfall_probability"]
+                active_input = FarmInput(**updated_dict)
+        else:
+            weather_data = {
+                "location": active_input.location,
+                "forecast_rainfall_mm": active_input.forecast_rainfall_mm,
+                "rainfall_probability": active_input.rainfall_probability,
+                "source": "User Input",
+                "status": "available" if active_input.forecast_rainfall_mm is not None else "probability_only"
+            }
+
+        # 2. get_crop_water_requirement
         water_req = get_crop_water_requirement(
-            crop=farm_input.crop,
-            soil_type=farm_input.soil_type,
+            crop=active_input.crop,
+            soil_type=active_input.soil_type,
         )
         tool_trace.append(ToolTraceItem(tool="get_crop_water_requirement", status="completed"))
 
-        # 2. calculate_irrigation
+        # 3. calculate_irrigation
         irrigation_rec = calculate_irrigation(
-            crop=farm_input.crop,
-            area_acres=farm_input.area_acres,
-            soil_type=farm_input.soil_type,
-            current_irrigation_mm=farm_input.current_irrigation_mm,
-            location=farm_input.location,
-            rainfall_probability=farm_input.rainfall_probability,
-            soil_moisture_percent=farm_input.soil_moisture_percent,
+            crop=active_input.crop,
+            area_acres=active_input.area_acres,
+            soil_type=active_input.soil_type,
+            current_irrigation_mm=active_input.current_irrigation_mm,
+            location=active_input.location,
+            rainfall_probability=active_input.rainfall_probability,
+            soil_moisture_percent=active_input.soil_moisture_percent,
+            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
         )
         tool_trace.append(ToolTraceItem(tool="calculate_irrigation", status="completed"))
 
-        # 3. calculate_water_savings
+        # 4. calculate_water_savings
         water_savings = calculate_water_savings(
-            crop=farm_input.crop,
-            area_acres=farm_input.area_acres,
-            soil_type=farm_input.soil_type,
-            current_irrigation_mm=farm_input.current_irrigation_mm,
+            crop=active_input.crop,
+            area_acres=active_input.area_acres,
+            soil_type=active_input.soil_type,
+            current_irrigation_mm=active_input.current_irrigation_mm,
             recommended_irrigation_mm=irrigation_rec["recommended_irrigation_mm"],
-            location=farm_input.location,
-            rainfall_probability=farm_input.rainfall_probability,
-            soil_moisture_percent=farm_input.soil_moisture_percent,
+            location=active_input.location,
+            rainfall_probability=active_input.rainfall_probability,
+            soil_moisture_percent=active_input.soil_moisture_percent,
+            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
         )
         tool_trace.append(ToolTraceItem(tool="calculate_water_savings", status="completed"))
 
-        # 4. calculate_crop_residue
+        # 5. calculate_crop_residue
         crop_residue = calculate_crop_residue(
-            crop=farm_input.crop,
-            area_acres=farm_input.area_acres,
-            soil_type=farm_input.soil_type,
-            current_irrigation_mm=farm_input.current_irrigation_mm,
-            location=farm_input.location,
-            rainfall_probability=farm_input.rainfall_probability,
-            soil_moisture_percent=farm_input.soil_moisture_percent,
+            crop=active_input.crop,
+            area_acres=active_input.area_acres,
+            soil_type=active_input.soil_type,
+            current_irrigation_mm=active_input.current_irrigation_mm,
+            location=active_input.location,
+            rainfall_probability=active_input.rainfall_probability,
+            soil_moisture_percent=active_input.soil_moisture_percent,
+            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
         )
         tool_trace.append(ToolTraceItem(tool="calculate_crop_residue", status="completed"))
 
-        # 5. calculate_environmental_impact
+        # 6. calculate_environmental_impact
         env_impact = calculate_environmental_impact(
-            crop=farm_input.crop,
-            area_acres=farm_input.area_acres,
-            current_irrigation_mm=farm_input.current_irrigation_mm,
+            crop=active_input.crop,
+            area_acres=active_input.area_acres,
+            current_irrigation_mm=active_input.current_irrigation_mm,
             recommended_irrigation_mm=irrigation_rec["recommended_irrigation_mm"],
-            soil_type=farm_input.soil_type,
-            location=farm_input.location,
-            rainfall_probability=farm_input.rainfall_probability,
-            soil_moisture_percent=farm_input.soil_moisture_percent,
+            soil_type=active_input.soil_type,
+            location=active_input.location,
+            rainfall_probability=active_input.rainfall_probability,
+            soil_moisture_percent=active_input.soil_moisture_percent,
+            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
         )
         tool_trace.append(ToolTraceItem(tool="calculate_environmental_impact", status="completed"))
 
         numerical_results = {
+            "weather_forecast": weather_data,
             "crop_water_requirement": water_req,
             "irrigation_recommendation": irrigation_rec,
             "water_analysis": water_savings,
@@ -203,7 +243,7 @@ class FarmGuardAgent:
             "environmental_impact": env_impact,
         }
 
-        return numerical_results, tool_trace
+        return numerical_results, tool_trace, active_input
 
     def _generate_deterministic_explanation(
         self,
@@ -216,6 +256,7 @@ class FarmGuardAgent:
         res = num_res["residue_estimate"]
         env = num_res["environmental_impact"]
         crop_req = num_res["crop_water_requirement"]
+        weather = num_res.get("weather_forecast", {})
 
         if irrig["recommended_irrigation_mm"] == 0.0:
             rec_text = (
@@ -231,17 +272,31 @@ class FarmGuardAgent:
                 f"- Timing & Field Action: {irrig['action']}"
             )
 
+        # Weather context description
+        if farm_input.forecast_rainfall_mm is not None:
+            weather_text = f"- Forecast Precipitation: {farm_input.forecast_rainfall_mm:.1f} mm expected (Source: {weather.get('source', 'Open-Meteo')})"
+        elif farm_input.rainfall_probability > 0:
+            weather_text = f"- Rain Probability: {farm_input.rainfall_probability * 100:.0f}% chance of rain (precipitation depth unconfirmed)"
+        else:
+            weather_text = "- Weather Outlook: No immediate precipitation expected."
+
         practices_list = "\n".join([f"  * {p}" for p in res["recommended_practices"]])
 
         reasons = [
             f"Current soil moisture is at {farm_input.soil_moisture_percent:.1f}% against a target threshold of {crop_req['target_moisture_percent']:.1f}% (deficit of {irrig['soil_depletion_percent']:.1f}%).",
-            f"Forecasted rainfall probability of {farm_input.rainfall_probability * 100:.0f}% provides an estimated natural precipitation credit of ~{irrig['expected_rain_offset_mm']:.1f} mm.",
-            f"Soil retention factor for {farm_input.soil_type} is {crop_req['soil_retention_factor']}x, adjusting water percolation losses.",
+            f"Soil retention factor for {farm_input.soil_type} is {crop_req['soil_retention_factor']}x, adjusting water percolation dynamics.",
         ]
+        if farm_input.forecast_rainfall_mm is not None:
+            reasons.append(f"Forecasted rainfall of {farm_input.forecast_rainfall_mm:.1f} mm provides an effective precipitation credit of ~{irrig['expected_rain_offset_mm']:.1f} mm.")
+        elif farm_input.rainfall_probability >= 0.60:
+            reasons.append(f"Rain probability is high ({farm_input.rainfall_probability * 100:.0f}%), but precipitation amount is unconfirmed. Verify local radar before postponing.")
         why_text = "\n".join([f"- {r}" for r in reasons])
 
         explanation = f"""### RECOMMENDATION
 {rec_text}
+
+### WEATHER CONTEXT
+{weather_text}
 
 ### WATER IMPACT
 - Current planned water: {water['current_water_liters']:,.1f} Liters
@@ -266,10 +321,11 @@ class FarmGuardAgent:
 {why_text}
 
 ### ASSUMPTIONS
-- Prototype volumetric baseline: 1 acre-mm = 4,046.86 Liters of water.
-- Tubewell pump discharge estimated at 28,000 Liters/hour (standard 5 HP centrifugal pump).
-- Water savings and emissions figures reflect prototype mathematical models rather than verified sensor ground truth.
-- Natural rain discount is estimated from probability thresholds and should be cross-verified with local weather updates.
+- Weather credit is based on forecast precipitation depth (or risk probability signal) and should be checked with local weather updates.
+- Volumetric conversion is based on standard geometric baseline: 1 acre-mm = 4,046.86 Liters.
+- Agronomic crop baseline depths and soil retention factors are prototype models.
+- Tubewell pump discharge is estimated at a standard 5 HP pump rate (~28,000 L/hr).
+- Avoided emissions assume complete prevention of in-situ stubble combustion.
 """
         return explanation.strip()
 
@@ -295,14 +351,14 @@ class FarmGuardAgent:
                 f"- Location: {farm_input.location}\n"
                 f"- Soil Moisture: {farm_input.soil_moisture_percent}%\n"
                 f"- Rain Probability: {farm_input.rainfall_probability * 100}%\n"
+                f"- Forecast Rainfall: {farm_input.forecast_rainfall_mm} mm\n"
                 f"- Current Irrigation: {farm_input.current_irrigation_mm} mm\n\n"
                 f"DETERMINISTIC TOOL RESULTS (DO NOT RECALCULATE NUMBERS):\n"
                 f"{num_res}\n\n"
                 f"USER QUERY: {user_message or 'Please provide comprehensive farming advice.'}\n\n"
-                f"Please synthesize the response strictly adhering to the requested sections (RECOMMENDATION, WATER IMPACT, CROP RESIDUE, ENVIRONMENTAL IMPACT, WHY, ASSUMPTIONS)."
+                f"Please synthesize the response strictly adhering to the requested sections (RECOMMENDATION, WEATHER CONTEXT, WATER IMPACT, CROP RESIDUE, ENVIRONMENTAL IMPACT, WHY, ASSUMPTIONS)."
             )
 
-            # Standard flash model call via google-genai SDK
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
@@ -312,24 +368,22 @@ class FarmGuardAgent:
                 return response.text.strip()
             return self._generate_deterministic_explanation(farm_input, num_res)
         except Exception:
-            # Safe fallback if API call fails or key is invalid
             return self._generate_deterministic_explanation(farm_input, num_res)
 
     def get_advice(self, request: AgentAdviceRequest) -> AgentAdviceResponse:
         """Main agent entrypoint to evaluate farm status and deliver structured advice."""
-        farm_input, missing_fields = self._extract_farm_input_from_dict_or_text(
+        raw_farm_input, missing_fields = self._extract_farm_input_from_dict_or_text(
             farm_dict=request.farm,
             message=request.message,
         )
 
-        if not farm_input:
+        if not raw_farm_input:
             field_name_map = {
                 "crop": "crop type (e.g. wheat, rice, maize, sugarcane)",
                 "area_acres": "farm area (in acres)",
                 "soil_type": "soil type (e.g. sandy loam, clayey, alluvial, loamy, black)",
                 "current_irrigation_mm": "recent / planned irrigation depth (in mm)",
                 "location": "farm location / state (e.g. Uttar Pradesh, Punjab)",
-                "rainfall_probability": "rainfall forecast probability (e.g. 70% or 0.7)",
                 "soil_moisture_percent": "current soil moisture level (e.g. 64%)",
             }
             human_fields = [field_name_map.get(f, f.replace("_", " ")) for f in missing_fields]
@@ -346,16 +400,19 @@ class FarmGuardAgent:
                 },
                 tool_trace=[],
                 numerical_results=None,
-                assumptions=["Analysis requires baseline farm parameters."],
+                assumptions=[AssumptionItem(
+                    type="input",
+                    text="Analysis requires baseline farm parameters."
+                )],
                 missing_fields=missing_fields,
             )
 
-        # 1. Execute deterministic tools
-        numerical_results, tool_trace = self._execute_tools(farm_input)
+        # 1. Execute deterministic tools & weather lookup
+        numerical_results, tool_trace, active_farm_input = self._execute_tools(raw_farm_input)
 
         # 2. Synthesize explanation via Gemini (or safe deterministic synthesis)
         answer = self._call_gemini_synthesis(
-            farm_input=farm_input,
+            farm_input=active_farm_input,
             num_res=numerical_results,
             user_message=request.message,
         )
@@ -366,15 +423,13 @@ class FarmGuardAgent:
             "status": irrig["status"],
             "urgency": irrig["urgency"],
             "action": irrig["action"],
+            "expected_rain_offset_mm": irrig.get("expected_rain_offset_mm", 0.0),
         }
 
-        assumptions_list = [
-            "Calculations reflect prototype agronomic models and are not guaranteed real-world outcomes.",
-            "Water volume conversion assumes 1 acre-mm = 4,046.86 Liters.",
-            "Tubewell pumping estimates assume a standard 5 HP pump rate (~28,000 L/hr).",
-            "Avoided emissions assume prevention of open field stubble combustion.",
-            "Weather rainfall discount is based on probabilistic forecast credit.",
-        ]
+        assumptions_list = generate_assumptions(
+            farm_input=active_farm_input,
+            irrigation_rec=irrig,
+        )
 
         return AgentAdviceResponse(
             answer=answer,

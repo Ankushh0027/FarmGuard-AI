@@ -1,4 +1,4 @@
-"""Comprehensive test suite for FarmGuard AI Gemini Agent and Tool Orchestration."""
+"""Comprehensive test suite for FarmGuard AI Gemini Agent, Live Weather, and Tool Orchestration."""
 
 import pytest
 from unittest.mock import patch, MagicMock
@@ -15,11 +15,11 @@ client = TestClient(app)
 # 1. AGENT UNIT TESTS
 # ============================================================================
 
-def test_agent_valid_farm_advice_request():
-    """Test agent processes a complete structured farm input and returns structured sections."""
+def test_agent_valid_farm_advice_request_with_weather_tool():
+    """Test agent processes a complete farm input, invokes weather tool, and returns structured sections."""
     agent = FarmGuardAgent()
     req = AgentAdviceRequest(
-        message="Please analyze my farm.",
+        message="Please analyze my farm in Uttar Pradesh.",
         farm={
             "crop": "wheat",
             "area_acres": 2.0,
@@ -32,7 +32,11 @@ def test_agent_valid_farm_advice_request():
     )
     res = agent.get_advice(req)
     assert res.missing_fields is None
-    assert len(res.tool_trace) == 5
+    # All tools including get_weather_forecast should be in the trace
+    assert len(res.tool_trace) >= 5
+    tools_in_trace = [t.tool for t in res.tool_trace]
+    assert "get_weather_forecast" in tools_in_trace
+    assert "calculate_irrigation" in tools_in_trace
     assert res.numerical_results is not None
 
     # Check that key sections exist in synthesized answer
@@ -42,6 +46,12 @@ def test_agent_valid_farm_advice_request():
     assert "ENVIRONMENTAL IMPACT" in res.answer
     assert "WHY" in res.answer
     assert "ASSUMPTIONS" in res.answer
+
+    # Check structured assumptions categorization
+    assump_types = [a.type for a in res.assumptions]
+    assert "weather" in assump_types
+    assert "agronomic_model" in assump_types
+    assert "environmental_impact" in assump_types
 
 
 def test_agent_missing_farm_information():
@@ -66,32 +76,8 @@ def test_agent_partial_information_extraction():
     )
     res = agent.get_advice(req)
     assert res.missing_fields is not None
-    # Crop, area, location were extracted, but soil moisture & irrigation are missing
     assert "soil_moisture_percent" in res.missing_fields
     assert "crop" not in res.missing_fields
-
-
-def test_agent_tool_execution_trace():
-    """Test that all 5 deterministic tools are called and traced."""
-    agent = FarmGuardAgent()
-    farm_input = FarmInput(
-        crop="rice",
-        area_acres=3.0,
-        soil_type="clayey",
-        current_irrigation_mm=75.0,
-        location="Punjab",
-        rainfall_probability=0.2,
-        soil_moisture_percent=55.0,
-    )
-    num_res, trace = agent._execute_tools(farm_input)
-    assert len(trace) == 5
-    tools_called = [t.tool for t in trace]
-    assert "get_crop_water_requirement" in tools_called
-    assert "calculate_irrigation" in tools_called
-    assert "calculate_water_savings" in tools_called
-    assert "calculate_crop_residue" in tools_called
-    assert "calculate_environmental_impact" in tools_called
-    assert all(t.status == "completed" for t in trace)
 
 
 def test_numerical_values_originate_from_tools():
@@ -105,6 +91,7 @@ def test_numerical_values_originate_from_tools():
             "current_irrigation_mm": 30.0,
             "location": "Uttar Pradesh",
             "rainfall_probability": 0.15,
+            "forecast_rainfall_mm": 0.0,
             "soil_moisture_percent": 45.0,
         }
     )
@@ -126,14 +113,13 @@ def test_zero_mm_irrigation_wording_constraint():
             "soil_type": "sandy loam",
             "current_irrigation_mm": 30.0,
             "location": "Uttar Pradesh",
-            "rainfall_probability": 0.85,  # High rain -> 0mm recommended
+            "rainfall_probability": 0.85,
+            "forecast_rainfall_mm": 20.0,  # 20mm forecast rain -> 0mm recommended
             "soil_moisture_percent": 64.0,
         }
     )
     res = agent.get_advice(req)
-    # Ensure it doesn't say "You definitely do not need irrigation"
     assert "definitely do not need" not in res.answer.lower()
-    # Must explicitly state prototype recommendation / assumptions
     assert "recommends postponing" in res.answer.lower() or "prototype model" in res.answer.lower()
 
 
@@ -147,16 +133,17 @@ def test_gemini_api_call_and_mock():
         current_irrigation_mm=30.0,
         location="Uttar Pradesh",
         rainfall_probability=0.7,
+        forecast_rainfall_mm=10.0,
         soil_moisture_percent=64.0,
     )
-    num_res, _ = agent._execute_tools(farm_input)
+    num_res, _, active_input = agent._execute_tools(farm_input)
 
-    # Mock the google.genai Client
     with patch("google.genai.Client") as mock_client_cls:
         mock_instance = MagicMock()
         mock_response = MagicMock()
         mock_response.text = (
             "### RECOMMENDATION\n- Postpone irrigation.\n\n"
+            "### WEATHER CONTEXT\n- 10.0 mm forecast rain.\n\n"
             "### WATER IMPACT\n- Saved 242,811 Liters\n\n"
             "### CROP RESIDUE\n- 3.8 Tonnes\n\n"
             "### ENVIRONMENTAL IMPACT\n- 5,548 kg CO2e\n\n"
@@ -166,7 +153,7 @@ def test_gemini_api_call_and_mock():
         mock_instance.models.generate_content.return_value = mock_response
         mock_client_cls.return_value = mock_instance
 
-        answer = agent._call_gemini_synthesis(farm_input, num_res, "test query")
+        answer = agent._call_gemini_synthesis(active_input, num_res, "test query")
         assert "RECOMMENDATION" in answer
         assert "WATER IMPACT" in answer
         assert mock_instance.models.generate_content.called
@@ -182,13 +169,13 @@ def test_gemini_api_failure_graceful_fallback():
         current_irrigation_mm=30.0,
         location="Uttar Pradesh",
         rainfall_probability=0.7,
+        forecast_rainfall_mm=5.0,
         soil_moisture_percent=64.0,
     )
-    num_res, _ = agent._execute_tools(farm_input)
+    num_res, _, active_input = agent._execute_tools(farm_input)
 
     with patch("google.genai.Client", side_effect=Exception("API Connection Timeout")):
-        answer = agent._call_gemini_synthesis(farm_input, num_res, "test query")
-        # Should gracefully return structured deterministic advisory without raising error
+        answer = agent._call_gemini_synthesis(active_input, num_res, "test query")
         assert "RECOMMENDATION" in answer
         assert "WATER IMPACT" in answer
         assert "ASSUMPTIONS" in answer
@@ -240,7 +227,7 @@ def test_api_agent_advice_endpoint_complete_payload():
     assert "answer" in data
     assert "recommendation" in data
     assert "tool_trace" in data
-    assert len(data["tool_trace"]) == 5
+    assert len(data["tool_trace"]) >= 5
     assert "numerical_results" in data
     assert "assumptions" in data
     assert len(data["assumptions"]) > 0

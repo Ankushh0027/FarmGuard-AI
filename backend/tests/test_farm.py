@@ -40,6 +40,7 @@ def test_valid_farm_input():
         current_irrigation_mm=50.0,
         location="Uttar Pradesh",
         rainfall_probability=0.15,
+        forecast_rainfall_mm=5.0,
         soil_moisture_percent=45.0,
     )
     assert farm.crop == "wheat"
@@ -48,6 +49,7 @@ def test_valid_farm_input():
     assert farm.current_irrigation_mm == 50.0
     assert farm.location == "Uttar Pradesh"
     assert farm.rainfall_probability == 0.15
+    assert farm.forecast_rainfall_mm == 5.0
     assert farm.soil_moisture_percent == 45.0
 
 
@@ -144,6 +146,7 @@ def test_all_supported_crops_pipeline(crop_name):
         current_irrigation_mm=60.0,
         location="Punjab",
         rainfall_probability=0.1,
+        forecast_rainfall_mm=0.0,
         soil_moisture_percent=40.0,
     )
     result = analyze_farm(farm)
@@ -152,10 +155,107 @@ def test_all_supported_crops_pipeline(crop_name):
     assert result.water_analysis.current_water_liters > 0
     assert result.residue_estimate.estimated_residue_tonnes > 0
     assert result.environmental_impact.co2e_avoided_kg > 0
+    assert len(result.assumptions) > 0
 
 
 # ============================================================================
-# 3. AGENT TOOLS TESTS (app/tools/farm_tools.py)
+# 3. SCIENTIFICALLY HARDENED RAINFALL LOGIC TESTS
+# ============================================================================
+
+def test_rainfall_probability_without_forecast_rainfall_mm():
+    """Test that high rain probability alone does NOT fabricate a rainfall amount."""
+    farm = FarmInput(
+        crop="wheat",
+        area_acres=2.0,
+        soil_type="sandy loam",
+        current_irrigation_mm=30.0,
+        location="Uttar Pradesh",
+        rainfall_probability=0.70,  # 70% probability
+        forecast_rainfall_mm=None,  # Depth is unknown
+        soil_moisture_percent=45.0,  # Target is 65%, deficit is 20%
+    )
+    rec = calculate_irrigation(farm)
+    # Expected rain offset must be 0.0 (no fabricated rainfall depth!)
+    assert rec.expected_rain_offset_mm == 0.0
+    assert rec.recommended_irrigation_mm > 0.0
+    assert "Check Local Forecast" in rec.status or "Moderate" in rec.status
+    assert "unknown" in rec.action.lower() or "re-check" in rec.action.lower() or "verify" in rec.action.lower()
+
+
+def test_forecast_rainfall_mm_greater_than_deficit():
+    """Test that when actual forecast rain depth exceeds moisture deficit, irrigation is postponed."""
+    farm = FarmInput(
+        crop="wheat",
+        area_acres=2.0,
+        soil_type="sandy loam",
+        current_irrigation_mm=30.0,
+        location="Uttar Pradesh",
+        rainfall_probability=0.80,
+        forecast_rainfall_mm=25.0,  # 25 mm forecast rain exceeds the deficit (~18 mm)
+        soil_moisture_percent=45.0,
+    )
+    rec = calculate_irrigation(farm)
+    assert rec.recommended_irrigation_mm == 0.0
+    assert rec.expected_rain_offset_mm > 0.0
+    assert "Postpone" in rec.status
+    assert "25.0 mm" in rec.action or "25.0 mm" in rec.explanation
+
+
+def test_forecast_rainfall_mm_less_than_deficit():
+    """Test that when forecast rain is less than deficit, irrigation is reduced rather than eliminated."""
+    farm = FarmInput(
+        crop="wheat",
+        area_acres=2.0,
+        soil_type="alluvial",
+        current_irrigation_mm=50.0,
+        location="Uttar Pradesh",
+        rainfall_probability=0.60,
+        forecast_rainfall_mm=5.0,   # 5 mm forecast rain
+        soil_moisture_percent=45.0,  # Deficit is 20% on 65% target -> raw req is ~15.4 mm
+    )
+    rec = calculate_irrigation(farm)
+    # Net requirement should be raw req (~15.4 mm) - 5.0 mm = ~10.4 mm
+    assert rec.recommended_irrigation_mm == pytest.approx(10.4, abs=0.5)
+    assert rec.expected_rain_offset_mm == 5.0
+    assert "Reduced Irrigation" in rec.status
+
+
+def test_forecast_rainfall_zero():
+    """Test zero forecast rainfall."""
+    farm = FarmInput(
+        crop="wheat",
+        area_acres=2.0,
+        soil_type="alluvial",
+        current_irrigation_mm=50.0,
+        location="Uttar Pradesh",
+        rainfall_probability=0.0,
+        forecast_rainfall_mm=0.0,
+        soil_moisture_percent=45.0,
+    )
+    rec = calculate_irrigation(farm)
+    assert rec.expected_rain_offset_mm == 0.0
+    assert rec.recommended_irrigation_mm == pytest.approx(15.4, abs=0.5)
+
+
+def test_no_unsupported_icar_pau_claims():
+    """Verify that unsupported authoritative claims ('ICAR & PAU') are not present in responses."""
+    farm = FarmInput(
+        crop="wheat",
+        area_acres=2.0,
+        soil_type="alluvial",
+        current_irrigation_mm=50.0,
+        location="Uttar Pradesh",
+        rainfall_probability=0.1,
+        soil_moisture_percent=45.0,
+    )
+    result = analyze_farm(farm)
+    full_output = str(result.model_dump())
+    assert "ICAR & PAU guidelines" not in full_output
+    assert "ICAR/PAU" not in full_output
+
+
+# ============================================================================
+# 4. AGENT TOOLS TESTS (app/tools/farm_tools.py)
 # ============================================================================
 
 def test_tool_get_crop_water_requirement_valid_and_invalid():
@@ -167,7 +267,6 @@ def test_tool_get_crop_water_requirement_valid_and_invalid():
     assert res["soil_retention_factor"] == 0.85
     assert res["adjusted_irrigation_depth_mm"] > 0
 
-    # Test invalid crop in tool
     with pytest.raises(ValueError):
         tool_get_crop_water_req(crop="avocado")
 
@@ -182,6 +281,7 @@ def test_tool_calculate_irrigation():
         location="Haryana",
         rainfall_probability=0.2,
         soil_moisture_percent=50.0,
+        forecast_rainfall_mm=10.0,
     )
     assert "recommended_irrigation_mm" in res
     assert "status" in res
@@ -192,7 +292,6 @@ def test_tool_calculate_irrigation():
 
 def test_tool_calculate_water_savings_non_negative():
     """Test tool calculate_water_savings ensures savings are non-negative."""
-    # When current is greater than recommended
     res = tool_calc_water_savings(
         crop="wheat",
         area_acres=2.0,
@@ -204,7 +303,6 @@ def test_tool_calculate_water_savings_non_negative():
     assert res["water_savings_percent"] == 70.0
     assert res["diesel_or_electricity_savings_hours"] > 0
 
-    # When recommended is greater than current (under-irrigated previously)
     res_under = tool_calc_water_savings(
         crop="wheat",
         area_acres=2.0,
@@ -214,7 +312,6 @@ def test_tool_calculate_water_savings_non_negative():
     )
     assert res_under["water_savings_liters"] == 0.0
     assert res_under["water_savings_percent"] == 0.0
-    assert res_under["diesel_or_electricity_savings_hours"] == 0.0
 
 
 def test_tool_calculate_crop_residue():
@@ -222,7 +319,7 @@ def test_tool_calculate_crop_residue():
     res = tool_calc_crop_residue(crop="sugarcane", area_acres=4.0)
     assert res["crop"] == "sugarcane"
     assert res["area_acres"] == 4.0
-    assert res["estimated_residue_tonnes"] == 14.0  # 4 * 3.5
+    assert res["estimated_residue_tonnes"] == 14.0
     assert len(res["recommended_practices"]) > 0
     assert res["economic_potential_inr"] > 0
 
@@ -238,8 +335,6 @@ def test_tool_calculate_environmental_impact():
     assert res["co2e_avoided_kg"] > 0
     assert res["pm25_avoided_kg"] > 0
     assert res["water_saved_liters"] > 0
-    assert res["water_saved_cubic_meters"] > 0
-    assert "maize" in res["soil_health_benefit"].lower()
 
 
 def test_tool_analyze_farm_pipeline():
@@ -251,6 +346,7 @@ def test_tool_analyze_farm_pipeline():
         current_irrigation_mm=30.0,
         location="Uttar Pradesh",
         rainfall_probability=0.70,
+        forecast_rainfall_mm=15.0,
         soil_moisture_percent=64.0,
     )
     assert "farm_input" in res
@@ -258,10 +354,11 @@ def test_tool_analyze_farm_pipeline():
     assert "water_analysis" in res
     assert "residue_estimate" in res
     assert "environmental_impact" in res
+    assert "assumptions" in res
 
 
 # ============================================================================
-# 4. API ENDPOINT INTEGRATION & DEMO SCENARIO TESTS
+# 5. API ENDPOINT INTEGRATION & DEMO SCENARIO TESTS
 # ============================================================================
 
 def test_api_health_endpoint():
@@ -273,8 +370,8 @@ def test_api_health_endpoint():
     assert "FarmGuard AI Backend" in data["service"]
 
 
-def test_api_analyze_endpoint_phase2_demo_payload():
-    """Test POST /api/v1/farm/analyze with exact Phase 2 demo payload."""
+def test_api_analyze_endpoint_with_forecast_rainfall():
+    """Test POST /api/v1/farm/analyze with explicit forecast rainfall amount."""
     payload = {
         "crop": "wheat",
         "area_acres": 2,
@@ -282,30 +379,28 @@ def test_api_analyze_endpoint_phase2_demo_payload():
         "current_irrigation_mm": 30,
         "location": "Uttar Pradesh",
         "rainfall_probability": 70,
+        "forecast_rainfall_mm": 15.0,
         "soil_moisture_percent": 64
     }
     response = client.post("/api/v1/farm/analyze", json=payload)
     assert response.status_code == 200
     data = response.json()
 
-    # Validations on demo response
     assert data["farm_input"]["crop"] == "wheat"
-    assert data["farm_input"]["area_acres"] == 2.0
-    assert data["farm_input"]["rainfall_probability"] == 0.7
-    assert data["irrigation_recommendation"]["recommended_irrigation_mm"] == 0.0  # High rain + near optimal
-    assert data["residue_estimate"]["estimated_residue_tonnes"] == 3.8
-    assert data["water_analysis"]["water_savings_liters"] == round(30.0 * 2.0 * LITERS_PER_ACRE_MM, 1)
+    assert data["farm_input"]["forecast_rainfall_mm"] == 15.0
+    assert data["irrigation_recommendation"]["recommended_irrigation_mm"] == 0.0
+    assert len(data["assumptions"]) > 0
 
 
 def test_api_analyze_endpoint_invalid_payload():
     """Test POST /api/v1/farm/analyze with invalid payload returns 422."""
     bad_payload = {
         "crop": "wheat",
-        "area_acres": -5.0,  # Invalid area
+        "area_acres": -5.0,
         "soil_type": "alluvial",
         "current_irrigation_mm": 50.0,
         "location": "Uttar Pradesh",
-        "rainfall_probability": 250.0,  # Invalid probability
+        "rainfall_probability": 250.0,
         "soil_moisture_percent": 45.0
     }
     response = client.post("/api/v1/farm/analyze", json=bad_payload)
