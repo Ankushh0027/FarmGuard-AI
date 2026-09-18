@@ -36,17 +36,20 @@ def validate_tool_inputs(tool_name: str, kwargs: Dict[str, Any]) -> Tuple[bool, 
     if not auth_ok:
         return False, auth_err
 
-    # Check for NaN / Infinity in float inputs
+    # Check for NaN / Infinity in float inputs or string representations
     for key, val in kwargs.items():
         if isinstance(val, (int, float)):
             if math.isnan(val) or math.isinf(val):
                 return False, f"Invalid float value ({val}) for parameter '{key}' in tool '{tool_name}'."
+        elif isinstance(val, str):
+            if val.strip().lower() in ["nan", "inf", "-inf", "infinity", "-infinity"]:
+                return False, f"Invalid string float value ({val}) for parameter '{key}' in tool '{tool_name}'."
 
     return True, None
 
 
 def _check_numeric_sanity(data: Any, path: str = "") -> Tuple[bool, Optional[str]]:
-    """Recursively check that all numeric outputs are finite and sane."""
+    """Recursively check that all numeric outputs are finite, numeric, and sane."""
     if isinstance(data, dict):
         for k, v in data.items():
             curr_path = f"{path}.{k}" if path else k
@@ -62,6 +65,9 @@ def _check_numeric_sanity(data: Any, path: str = "") -> Tuple[bool, Optional[str
     elif isinstance(data, (int, float)):
         if math.isnan(data) or math.isinf(data):
             return False, f"Numeric value at '{path}' is NaN or Infinity."
+    elif isinstance(data, str):
+        if data.strip().lower() in ["nan", "inf", "-inf", "infinity", "-infinity"]:
+            return False, f"String value at '{path}' represents NaN or Infinity."
     return True, None
 
 
@@ -91,8 +97,11 @@ def validate_tool_outputs(tool_name: str, result: Dict[str, Any]) -> Tuple[bool,
     # 3. Tool-specific domain validation
     if tool_name == "calculate_irrigation":
         rec_mm = result.get("recommended_irrigation_mm")
-        if rec_mm is not None and rec_mm < 0.0:
-            return False, f"Tool '{tool_name}' produced negative recommended irrigation ({rec_mm} mm)."
+        if rec_mm is not None:
+            if not isinstance(rec_mm, (int, float)):
+                return False, f"Recommended irrigation must be numeric, got {type(rec_mm).__name__}."
+            if rec_mm < 0.0:
+                return False, f"Tool '{tool_name}' produced negative recommended irrigation ({rec_mm} mm)."
 
     elif tool_name == "calculate_water_savings":
         savings_l = result.get("water_savings_liters")
@@ -100,29 +109,37 @@ def validate_tool_outputs(tool_name: str, result: Dict[str, Any]) -> Tuple[bool,
         rec_l = result.get("recommended_water_liters")
         pct = result.get("water_savings_percent")
 
-        if savings_l is not None and savings_l < 0.0:
-            return False, f"Water savings liters cannot be negative ({savings_l})."
-        if curr_l is not None and curr_l < 0.0:
-            return False, f"Current water liters cannot be negative ({curr_l})."
-        if rec_l is not None and rec_l < 0.0:
-            return False, f"Recommended water liters cannot be negative ({rec_l})."
-        if pct is not None and (pct < 0.0 or pct > 100.0):
-            return False, f"Water savings percent must be 0-100% ({pct})."
+        for name, val in [("Savings", savings_l), ("Current water", curr_l), ("Recommended water", rec_l)]:
+            if val is not None:
+                if not isinstance(val, (int, float)):
+                    return False, f"{name} liters must be numeric."
+                if val < 0.0:
+                    return False, f"{name} liters cannot be negative ({val})."
+
+        if pct is not None:
+            if not isinstance(pct, (int, float)):
+                return False, "Water savings percent must be numeric."
+            if pct < 0.0 or pct > 100.0:
+                return False, f"Water savings percent must be 0-100% ({pct})."
 
     elif tool_name == "calculate_crop_residue":
         tonnes = result.get("estimated_residue_tonnes")
         val = result.get("economic_potential_inr")
-        if tonnes is not None and tonnes < 0.0:
-            return False, f"Residue tonnes cannot be negative ({tonnes})."
-        if val is not None and val < 0.0:
-            return False, f"Residue economic potential cannot be negative ({val})."
+        if tonnes is not None:
+            if not isinstance(tonnes, (int, float)) or tonnes < 0.0:
+                return False, f"Residue tonnes invalid or negative ({tonnes})."
+        if val is not None:
+            if not isinstance(val, (int, float)) or val < 0.0:
+                return False, f"Residue economic potential invalid or negative ({val})."
 
     elif tool_name == "calculate_environmental_impact":
         co2e = result.get("co2e_avoided_kg")
         pm25 = result.get("pm25_avoided_kg")
-        if co2e is not None and co2e < 0.0:
-            return False, f"CO2e avoided cannot be negative ({co2e})."
-        if pm25 is not None and pm25 < 0.0:
-            return False, f"PM2.5 avoided cannot be negative ({pm25})."
+        if co2e is not None:
+            if not isinstance(co2e, (int, float)) or co2e < 0.0:
+                return False, f"CO2e avoided invalid or negative ({co2e})."
+        if pm25 is not None:
+            if not isinstance(pm25, (int, float)) or pm25 < 0.0:
+                return False, f"PM2.5 avoided invalid or negative ({pm25})."
 
     return True, None

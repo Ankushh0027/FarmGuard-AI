@@ -105,6 +105,25 @@ pytest -v
 
 ---
 
+## 🛡️ AI Security & Adversarial Evaluation Suite
+
+FarmGuard AI includes a defense-in-depth security benchmark covering **107 test cases** in `backend/tests/adversarial_cases.json`:
+- **Direct Prompt Injections** (DAN mode, roleplay escapes, system prompt extraction)
+- **Obfuscated Attacks** (spaced characters, mixed casing, base64 payloads, delimiter manipulation)
+- **Multilingual Attacks** (Hindi, Hinglish, Spanish, French, German, Arabic, Telugu)
+- **Secret Extraction & Environment Variable Dumps** (`$GEMINI_API_KEY`, `os.environ`, auth tokens)
+- **Tool Abuse & Parameter Attacks** (unauthorized tools, `NaN`/`Infinity` injections, bounds violations)
+- **Deterministic Synthesis Fallback** (catches numerical hallucinations, unsupported certainty claims)
+- **Benign Controls** (22 realistic farming queries with trigger words to ensure $0.0\%$ False Positive Rate)
+
+### Running the Adversarial Benchmark
+```bash
+cd backend
+python -m app.evaluation.adversarial_evaluator
+```
+
+---
+
 ## 📊 Core Calculation Assumptions
 - **Metric Conversion**: 1 acre-mm = 4,046.86 Liters of water.
 - **Tubewell Pump Rate**: ~28,000 Liters/hr (5 HP pump prototype standard).
