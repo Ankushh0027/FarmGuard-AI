@@ -1,16 +1,17 @@
 import React from 'react';
 import {
-  LayoutDashboard,
-  Sprout,
-  Bot,
+  Home,
+  Droplets,
+  MessageSquare,
   CloudRain,
-  Activity,
-  Award,
+  Zap,
+  FileText,
   ShieldCheck,
+  Award,
   Cpu,
   Info,
   ChevronRight,
-  Sparkles
+  Sprout
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 
@@ -19,31 +20,22 @@ export default function Sidebar({ activePage, setActivePage, isOpen, setIsOpen }
 
   const navSections = [
     {
-      label: 'MAIN',
+      label: 'FARMER DECISIONS',
       items: [
-        { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-        { id: 'analysis', label: 'Farm Analysis', icon: Sprout },
-        { id: 'advisor', label: 'AI Advisor', icon: Bot },
-        { id: 'weather', label: 'Weather', icon: CloudRain },
+        { id: 'overview', label: 'Home', icon: Home },
+        { id: 'analysis', label: 'Check Water Need', icon: Droplets },
+        { id: 'advisor', label: 'Ask FarmGuard', icon: MessageSquare },
+        { id: 'weather', label: 'Should I Water Today?', icon: CloudRain },
+        { id: 'savings', label: 'Water & Energy Saved', icon: Zap },
+        { id: 'activity', label: 'My Reports', icon: FileText },
       ]
     },
     {
-      label: 'INSIGHTS',
+      label: 'SYSTEM & FOR JUDGES',
       items: [
-        { id: 'activity', label: 'Activity', icon: Activity },
-        { id: 'evaluation', label: 'Evaluation', icon: Award },
-      ]
-    },
-    {
-      label: 'SECURITY',
-      items: [
-        { id: 'security', label: 'Security Center', icon: ShieldCheck },
-      ]
-    },
-    {
-      label: 'INFO',
-      items: [
-        { id: 'architecture', label: 'Architecture', icon: Cpu },
+        { id: 'security', label: 'Security Guardrails', icon: ShieldCheck },
+        { id: 'evaluation', label: 'AI Evaluation', icon: Award },
+        { id: 'architecture', label: 'How It Works', icon: Cpu },
         { id: 'about', label: 'About', icon: Info },
       ]
     }
@@ -67,7 +59,7 @@ export default function Sidebar({ activePage, setActivePage, isOpen, setIsOpen }
         </div>
         <div className="brand-text">
           <h1>FarmGuard</h1>
-          <span>AI Agricultural Intelligence</span>
+          <span>Agricultural Water Decision Tool</span>
         </div>
       </div>
 
@@ -99,15 +91,11 @@ export default function Sidebar({ activePage, setActivePage, isOpen, setIsOpen }
 
       {/* Footer System Status */}
       <div className="sidebar-footer">
-        <div className="system-status-pill">
-          <span className={`status-dot ${isOnline ? '' : 'warning'}`}></span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-            <span style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.76rem' }}>
-              Backend {isOnline ? 'Online' : 'Offline Mode'}
-            </span>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
-              Deterministic Engine v0.1.0
-            </span>
+        <div className="system-status-indicator">
+          <div className={`status-dot ${isOnline ? 'online' : 'checking'}`} />
+          <div className="status-text">
+            <span className="status-label">{isOnline ? 'System Ready' : 'Connecting...'}</span>
+            <span className="status-version">NextStep 2026 • Earth Forward</span>
           </div>
         </div>
       </div>

@@ -1,18 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { checkHealth } from '../services/api';
-import { DEMO_SCENARIOS } from '../config/agriculturalData';
+import { DEMO_SCENARIOS, PUMP_CAPACITIES } from '../config/agriculturalData';
 
 const FarmContext = createContext();
 
 const EMPTY_FARM = {
   crop: '',
   area_acres: '',
-  soil_type: '',
+  soil_type: 'alluvial',
   current_irrigation_mm: '',
   location: 'Uttar Pradesh',
   rainfall_probability: 0,
   forecast_rainfall_mm: 0,
   soil_moisture_percent: '',
+  pump_hp: 5,
+  electricity_tariff: 6,
 };
 
 export function FarmProvider({ children }) {
@@ -43,7 +45,7 @@ export function FarmProvider({ children }) {
   const loadExampleScenario = (scenarioKey = 'wheat_up') => {
     const scenario = DEMO_SCENARIOS[scenarioKey] || DEMO_SCENARIOS.wheat_up;
     const { label, ...farmFields } = scenario;
-    setFarm(farmFields);
+    setFarm(prev => ({ ...prev, ...farmFields }));
     setHasFarmProfile(true);
     setLatestAnalysis(null); // Clear any old results so user explicitly analyzes
   };

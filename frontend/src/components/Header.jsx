@@ -1,23 +1,24 @@
 import React from 'react';
-import { Menu, MapPin, Layers, Droplets, ShieldCheck, Sparkles } from 'lucide-react';
+import { Menu, MapPin, Droplets, ShieldCheck, Zap } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 
 export default function Header({ activePage, toggleSidebar }) {
-  const { farm, systemHealth } = useFarm();
+  const { farm, hasFarmProfile, systemHealth } = useFarm();
 
   const titles = {
-    overview: { title: 'Farm Overview', subtitle: 'Real-time agronomic snapshot and AI advisor highlights' },
-    analysis: { title: 'Farm Analysis', subtitle: 'Calculate irrigation requirements using farm, crop, soil, and weather conditions' },
-    advisor: { title: 'FarmGuard AI Advisor', subtitle: 'Natural language agricultural assistant with grounded tool orchestration' },
-    weather: { title: 'Weather Intelligence', subtitle: 'Precipitation forecasting and agronomic action translation' },
-    activity: { title: 'Activity & Audit Log', subtitle: 'Chronological telemetry and calculation trace records' },
-    evaluation: { title: 'Evaluation & Benchmarks', subtitle: 'Empirical model accuracy, behavioral evaluation, and trace integrity metrics' },
-    security: { title: 'Security Center', subtitle: 'Defense-in-depth AI guardrails and real-time prompt injection defenses' },
-    architecture: { title: 'System Architecture', subtitle: 'Pure Python deterministic calculations + multi-tier guardrails pipeline' },
-    about: { title: 'About FarmGuard AI', subtitle: 'NextStep Hacks 2026 (Earth Forward) mission, methodology, and team' },
+    overview: { title: 'Home', subtitle: 'Simple water decisions for your crop and field' },
+    analysis: { title: 'Check Water Need', subtitle: 'Calculate how much water your crop needs and how much you can save' },
+    advisor: { title: 'Ask FarmGuard', subtitle: 'Ask questions about your crops, irrigation timing, and weather' },
+    weather: { title: 'Should I Water Today?', subtitle: 'Rain forecast and daily watering advice for your field' },
+    savings: { title: 'Water & Energy Saved', subtitle: 'Groundwater, pumping time, electricity, and cost reductions' },
+    activity: { title: 'My Reports', subtitle: 'History of calculations and farm water plans' },
+    evaluation: { title: 'AI Evaluation & Benchmarks', subtitle: 'Empirical model accuracy, behavioral evaluation, and trace integrity metrics' },
+    security: { title: 'Security Guardrails', subtitle: 'Defense-in-depth AI guardrails and real-time prompt injection defenses' },
+    architecture: { title: 'How It Works (Architecture)', subtitle: 'Pure Python deterministic calculations + multi-tier guardrails pipeline' },
+    about: { title: 'About FarmGuard', subtitle: 'Mission, methodology, and sustainable agriculture impact' },
   };
 
-  const current = titles[activePage] || { title: 'FarmGuard AI', subtitle: 'Sustainable Agriculture Assistant' };
+  const current = titles[activePage] || { title: 'FarmGuard', subtitle: 'Agricultural Water Decision Tool' };
 
   return (
     <header className="top-header">
@@ -32,12 +33,21 @@ export default function Header({ activePage, toggleSidebar }) {
 
       <div className="header-right">
         {/* Active Farm Context Pill */}
-        <div className="farm-badge">
-          <MapPin size={13} />
-          <span>{farm.location}</span>
-          <span style={{ opacity: 0.4 }}>•</span>
-          <span style={{ textTransform: 'capitalize' }}>{farm.crop} ({farm.area_acres} ac)</span>
-        </div>
+        {hasFarmProfile && farm.crop ? (
+          <div className="farm-badge">
+            <MapPin size={13} />
+            <span>{farm.location}</span>
+            <span style={{ opacity: 0.4 }}>•</span>
+            <span style={{ textTransform: 'capitalize' }}>{farm.crop} ({farm.area_acres || 1} ac)</span>
+          </div>
+        ) : (
+          <div className="farm-badge" style={{ opacity: 0.75 }}>
+            <MapPin size={13} />
+            <span>{farm.location || 'India'}</span>
+            <span style={{ opacity: 0.4 }}>•</span>
+            <span>No field selected yet</span>
+          </div>
+        )}
 
         {/* Security Indicator */}
         <div style={{
@@ -53,7 +63,7 @@ export default function Header({ activePage, toggleSidebar }) {
           fontWeight: 600
         }}>
           <ShieldCheck size={14} />
-          <span>Guardrails Active</span>
+          <span>Verified Safe AI</span>
         </div>
       </div>
     </header>

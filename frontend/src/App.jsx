@@ -6,6 +6,7 @@ import OverviewPage from './pages/OverviewPage';
 import FarmAnalysisPage from './pages/FarmAnalysisPage';
 import AIAdvisorPage from './pages/AIAdvisorPage';
 import WeatherPage from './pages/WeatherPage';
+import SavingsPage from './pages/SavingsPage';
 import ActivityPage from './pages/ActivityPage';
 import EvaluationPage from './pages/EvaluationPage';
 import SecurityCenterPage from './pages/SecurityCenterPage';
@@ -26,6 +27,8 @@ export default function App() {
         return <AIAdvisorPage setActivePage={setActivePage} />;
       case 'weather':
         return <WeatherPage setActivePage={setActivePage} />;
+      case 'savings':
+        return <SavingsPage setActivePage={setActivePage} />;
       case 'activity':
         return <ActivityPage setActivePage={setActivePage} />;
       case 'evaluation':
@@ -44,7 +47,7 @@ export default function App() {
   return (
     <FarmProvider>
       <div className="app-layout">
-        {/* Persistent SaaS Sidebar */}
+        {/* Persistent Farmer Navigation Sidebar */}
         <Sidebar
           activePage={activePage}
           setActivePage={setActivePage}
@@ -59,7 +62,7 @@ export default function App() {
             toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           />
 
-          <main className="page-container">
+          <main className="main-content">
             {renderPage()}
           </main>
         </div>

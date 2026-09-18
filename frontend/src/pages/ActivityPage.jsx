@@ -45,8 +45,8 @@ export default function ActivityPage({ setActivePage }) {
               <Activity size={20} />
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: '0.98rem', color: 'var(--text-main)' }}>Audit Trail & Activity Telemetry</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>Chronological record of session calculations, AI queries, and security triggers</div>
+              <div style={{ fontWeight: 700, fontSize: '0.98rem', color: 'var(--text-main)' }}>My Reports & Session History</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>Chronological record of your field water plans, AI consultations, and telemetry</div>
             </div>
           </div>
 
