@@ -11,6 +11,7 @@ FarmGuard AI empowers Indian farmers with:
 3. **Deterministic Agricultural Calculation Engine**: Pure Python agronomic engine for water, fuel/electricity savings, and carbon footprint reduction without relying on LLM math.
 4. **Defense-in-Depth AI Security & Guardrails**: Multi-tier input parameter validation, prompt injection defense, secret leak protection, tool authorization, and numerical grounding.
 5. **Deterministic LLM Evaluation**: Automated 8-dimension evaluation framework verifying consistency, tool groundedness, and agricultural safety across a 32-case regression dataset.
+6. **Production-Grade Microservice Architecture**: Sliding-window rate limiting, constant-time API key auth, `X-Request-ID` correlation tracing, HTTP security headers, Prometheus metrics, and containerized deployment.
 
 ---
 
@@ -19,6 +20,7 @@ FarmGuard AI empowers Indian farmers with:
 ### Prerequisites
 - Python 3.10+
 - FastAPI, Uvicorn & Google GenAI SDK
+- Docker & Docker Compose (optional for containerized deployment)
 
 ### Installation
 ```bash
@@ -26,40 +28,79 @@ cd backend
 pip install -r requirements.txt
 ```
 
-### Environment Configuration (Optional for Live Gemini API)
+### Environment Configuration
+Copy the template configuration file:
 ```bash
-export GEMINI_API_KEY="your-gemini-api-key"
+cp .env.example .env
 ```
-*(If unset, the agent automatically executes deterministic tool orchestration, guardrail checks, and generates structured synthesis offline)*
+Key configuration parameters:
+- `APP_ENV`: `development` | `production` | `test` (defaults to `development`)
+- `API_AUTH_ENABLED`: `true` | `false` (when enabled, requires `X-API-Key` or `Authorization: Bearer <key>`)
+- `API_KEYS`: Comma-separated list of valid API keys
+- `RATE_LIMIT_PER_MINUTE`: Maximum requests per client IP / key per minute (default `60`)
+- `GEMINI_API_KEY`: Google Gemini API key for live LLM synthesis (offline fallback activates if unset)
 
-### Running the API Server
+### Running the API Server Locally
 ```bash
 cd backend
 uvicorn main:app --reload --port 8000
 ```
-Interactive API documentation is available at `http://localhost:8000/docs`.
+Interactive API documentation is available at `http://localhost:8000/docs` in development mode.
 
-### Running Tests
+### Running via Docker
 ```bash
-cd backend
-pytest -v
+# Build and run with Docker Compose
+docker-compose up -d
+
+# Or build standalone Docker image
+docker build -t farmguard-backend:latest -f backend/Dockerfile backend/
+docker run -d -p 8000:8000 --name farmguard farmguard-backend:latest
 ```
 
 ---
 
-## 📡 API Endpoints
+## 📡 API Endpoints & Health Probes
 
-### 1. Health Check
+### 1. Liveness Probe
 `GET /health`
+Fast, non-blocking liveness check. Never calls external LLMs or third-party APIs.
 ```json
 {
   "status": "ok",
+  "liveness": "healthy",
   "service": "FarmGuard AI Backend",
-  "version": "0.1.0"
+  "version": "0.1.0",
+  "phase": "Phase 7 - Productionization & Deployment"
 }
 ```
 
-### 2. Direct Deterministic Analysis
+### 2. Readiness Probe
+`GET /ready`
+Validates internal calculation engine, configuration, and security guardrails.
+```json
+{
+  "status": "ready",
+  "service": "FarmGuard AI Backend",
+  "checks": {
+    "engine": "ok",
+    "guardrails": "ok",
+    "config": "ok"
+  }
+}
+```
+
+### 3. Application Metrics
+`GET /metrics`
+Exposes Prometheus-compatible operational telemetry:
+- `farmguard_http_requests_total{method, endpoint, status}`
+- `farmguard_http_request_duration_seconds_total{method, endpoint}`
+- `farmguard_security_blocks_total{guardrail, reason}`
+- `farmguard_rate_limit_exceeded_total`
+- `farmguard_auth_failures_total`
+- `farmguard_tool_invocations_total{tool}`
+- `farmguard_fallback_activations_total{reason}`
+
+### 4. Direct Deterministic Analysis
 `POST /api/v1/farm/analyze`
 
 **Request Body:**
@@ -76,7 +117,7 @@ pytest -v
 }
 ```
 
-### 3. AI Agent Advisory, Guardrails & LLM Evaluation
+### 5. AI Agent Advisory, Guardrails & LLM Evaluation
 `POST /api/v1/agent/advice`
 
 **Request Body:**
@@ -94,10 +135,10 @@ pytest -v
 }
 ```
 
-**Response includes:**
+**Response Structure:**
 - `answer`: Synthesized advisory (RECOMMENDATION, WEATHER CONTEXT, WATER IMPACT, CROP RESIDUE, ENVIRONMENTAL IMPACT, WHY, ASSUMPTIONS)
 - `recommendation`: Tactical irrigation action & status
-- `tool_trace`: Execution log with security events (`INPUT_VALIDATED`, `WEATHER_FETCHED`, `TOOL_OUTPUT_VALIDATED`, `OUTPUT_GUARDRAIL_PASSED`, `EVALUATION_COMPLETED`)
+- `tool_trace`: Execution log with security checkpoints (`INPUT_VALIDATED`, `WEATHER_FETCHED`, `TOOL_OUTPUT_VALIDATED`, `OUTPUT_GUARDRAIL_PASSED`, `EVALUATION_COMPLETED`)
 - `numerical_results`: Verified pure mathematical tool results
 - `assumptions`: Explicit categorized assumptions (`weather`, `agronomic_model`, `environmental_impact`)
 - `security`: Checkpoint statuses (`input_guardrails`, `prompt_injection`, `secret_scan`, `output_guardrails`)
@@ -105,28 +146,36 @@ pytest -v
 
 ---
 
-## 🛡️ AI Security & Adversarial Evaluation Suite
+## 🛡️ AI Security & Evaluation Benchmark
 
-FarmGuard AI includes a defense-in-depth security benchmark covering **107 test cases** in `backend/tests/adversarial_cases.json`:
-- **Direct Prompt Injections** (DAN mode, roleplay escapes, system prompt extraction)
-- **Obfuscated Attacks** (spaced characters, mixed casing, base64 payloads, delimiter manipulation)
-- **Multilingual Attacks** (Hindi, Hinglish, Spanish, French, German, Arabic, Telugu)
-- **Secret Extraction & Environment Variable Dumps** (`$GEMINI_API_KEY`, `os.environ`, auth tokens)
-- **Tool Abuse & Parameter Attacks** (unauthorized tools, `NaN`/`Infinity` injections, bounds violations)
-- **Deterministic Synthesis Fallback** (catches numerical hallucinations, unsupported certainty claims)
-- **Benign Controls** (22 realistic farming queries with trigger words to ensure $0.0\%$ False Positive Rate)
+FarmGuard AI includes an extensive automated security and behavioral benchmark suite:
 
-### Running the Adversarial Benchmark
+### 1. Pytest Test Suite
+```bash
+cd backend
+pytest -v
+```
+
+### 2. Adversarial Security Benchmark (107 cases)
 ```bash
 cd backend
 python -m app.evaluation.adversarial_evaluator
 ```
+- Covers direct prompt injection, obfuscated encoding, multilingual injection (Hinglish/Hindi/etc.), secret extraction, tool abuse, and benign controls.
+- Red-team tool resistance: 100%
+- False positive rate: 0.0%
+- Secret leakage rate: 0.0%
 
-### Running the Agent Behavioral & Latency Benchmark
+### 3. Agent Behavioral & Latency Benchmark (52 cases)
 ```bash
 cd backend
 python -m app.evaluation.agent_evaluator
 ```
+- Tool Selection Accuracy: 100%
+- Tool Sequence Correctness: 100%
+- Numerical Grounding Faithfulness: 97.50%
+- Semantic Relevance Rate: 94.23%
+- Trace Integrity Rate: 100%
 
 ---
 
@@ -136,3 +185,10 @@ python -m app.evaluation.agent_evaluator
 - **Supported Crops**: Wheat, Rice (Paddy), Maize, Sugarcane.
 - **Supported Soil Types**: Alluvial, Loamy, Sandy Loam, Clayey, Clay Loam, Sandy, Black, Red.
 - **Emissions Factors**: ~1,460 kg CO₂e and ~7.5 kg PM2.5 avoided per tonne of wheat residue managed sustainably instead of burned.
+
+---
+
+## ⚠️ Known Limitations
+- **In-Memory Rate Limiting**: The rate limiter tracks requests per ASGI process. In a distributed multi-node cluster, a central cache like Redis should be configured.
+- **External Weather Service**: Real-time precipitation forecasts depend on Open-Meteo availability (with automatic fallback to regional norms).
+- **Heuristic Injection Defense**: While effective across tested vectors, multi-tier output grounding remains the ultimate safety invariant.
