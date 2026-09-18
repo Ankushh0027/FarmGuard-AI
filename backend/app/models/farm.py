@@ -47,8 +47,12 @@ class FarmInput(BaseModel):
     """Input parameters for farm analysis."""
     crop: str = Field(..., description="Crop type (e.g. wheat, rice, maize, sugarcane)")
     area_acres: float = Field(..., gt=0, description="Farm area in acres (must be > 0)")
-    soil_type: str = Field(..., description="Soil type (e.g. alluvial, loamy, sandy loam, clayey, sandy, black, red)")
-    current_irrigation_mm: float = Field(..., ge=0, description="Current planned or scheduled irrigation depth in mm")
+    soil_type: str = Field(default="alluvial", description="Soil type (e.g. alluvial, loamy, sandy loam, clayey, sandy, black, red)")
+    current_irrigation_mm: float = Field(
+        35.0,
+        ge=0,
+        description="Current planned or scheduled irrigation depth in mm"
+    )
     location: str = Field(..., min_length=2, description="Farm location/state (e.g. Uttar Pradesh, Punjab, Haryana)")
     rainfall_probability: float = Field(
         0.0,

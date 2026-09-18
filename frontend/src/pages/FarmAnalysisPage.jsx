@@ -3,9 +3,7 @@ import {
   Droplets,
   Sprout,
   CloudRain,
-  Sun,
   MapPin,
-  Sparkles,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
@@ -13,12 +11,10 @@ import {
   RotateCcw,
   Zap,
   Leaf,
-  Layers,
-  ArrowRight,
-  ShieldAlert,
-  HelpCircle,
   Clock,
-  Gauge
+  Gauge,
+  HelpCircle,
+  ArrowRight
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import {
@@ -82,26 +78,33 @@ export default function FarmAnalysisPage({ setActivePage }) {
     }
   };
 
-  // Submit calculation to backend
+  // Perform Real Calculation
   const handleCalculate = async (e) => {
-    if (e) e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    setError(null);
+
+    // Validation
     if (!farm.crop) {
-      setError('Please select what crop you are growing.');
+      setError('Please select the crop you are growing (e.g. Wheat, Rice, Maize, Sugarcane).');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+
     const area = parseFloat(farm.area_acres);
-    if (!area || area <= 0) {
-      setError('Please enter a valid field area (e.g., 2.0 acres).');
+    if (!area || isNaN(area) || area <= 0) {
+      setError('Please enter a valid field size greater than 0 (e.g., 0.5, 1.25, 2.5 acres).');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
+
     const moisture = parseFloat(farm.soil_moisture_percent);
     if (isNaN(moisture) || moisture < 0 || moisture > 100) {
-      setError('Please provide a soil moisture percentage between 0% and 100%.');
+      setError('Please provide a valid soil moisture value between 0% and 100%.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
     setLoading(true);
-    setError(null);
 
     const payload = {
       crop: farm.crop,
@@ -125,17 +128,27 @@ export default function FarmAnalysisPage({ setActivePage }) {
         submittedInput: { ...payload },
       });
 
+      const rec = response.irrigation_recommendation || response.recommendation;
+
       addActivity({
         title: `${farm.crop.toUpperCase()} Water Plan (${area} ac in ${farm.location})`,
         type: 'ANALYSIS',
-        status: response.recommendation?.status || 'Calculated',
+        status: rec?.status || 'Calculated',
         location: farm.location,
-        recommended_mm: response.recommendation?.recommended_irrigation_mm ?? 0,
+        recommended_mm: rec?.recommended_irrigation_mm ?? 0,
         water_saved_l: response.water_analysis?.water_savings_liters ?? 0,
         requestId: response.request_id || 'fg-trace',
       });
+
+      // Smooth scroll to results
+      setTimeout(() => {
+        const resultElement = document.getElementById('water-plan-results');
+        if (resultElement) {
+          resultElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
     } catch (err) {
-      setError(err.message || 'Error communicating with backend calculation engine.');
+      setError(err.message || 'Error connecting to the FarmGuard calculation engine. Please check backend status.');
     } finally {
       setLoading(false);
     }
@@ -145,15 +158,16 @@ export default function FarmAnalysisPage({ setActivePage }) {
   const selectedPumpObj = PUMP_CAPACITIES.find(p => p.hp === (farm.pump_hp || 5)) || PUMP_CAPACITIES[1];
 
   const analysis = latestAnalysis?.data || null;
-  const rec = analysis?.recommendation || null;
+  const rec = analysis?.irrigation_recommendation || analysis?.recommendation || null;
   const waterAnalysis = analysis?.water_analysis || null;
-  const residue = analysis?.residue_management || null;
+  const residue = analysis?.residue_estimate || analysis?.residue_management || null;
   const envImpact = analysis?.environmental_impact || null;
   const assumptions = analysis?.assumptions || [];
 
   // Pumping runtime and savings derived dynamically
+  const areaValue = parseFloat(farm.area_acres) || 1.0;
   const waterVolLiters = waterAnalysis?.recommended_irrigation_liters ?? (
-    rec ? Math.round(rec.recommended_irrigation_mm * (parseFloat(farm.area_acres) || 1) * 4046.86) : 0
+    rec ? Math.round(rec.recommended_irrigation_mm * areaValue * 4046.86) : 0
   );
   const pumpRuntimeHours = Number((waterVolLiters / selectedPumpObj.dischargeLph).toFixed(1));
   const pumpHoursSaved = waterAnalysis?.pump_hours_saved ?? (
@@ -166,23 +180,23 @@ export default function FarmAnalysisPage({ setActivePage }) {
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Top Header & Demo Load Action */}
-      <div className="card" style={{ padding: '18px 24px' }}>
+      {/* Top Header Card */}
+      <div className="card" style={{ padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
           <div>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '2px' }}>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '2px' }}>
               Check My Water Need
-            </h2>
-            <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-              Tell us about your field and crop. FarmGuard will calculate your water plan and energy savings.
+            </h1>
+            <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>
+              Enter your field details to get a simple irrigation recommendation and energy savings estimate.
             </p>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', fontWeight: 600 }}>Try Example Field:</span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', fontWeight: 600 }}>Example Field:</span>
             <select
               className="form-select"
-              style={{ width: 'auto', padding: '6px 12px', fontSize: '0.82rem' }}
+              style={{ width: 'auto', padding: '6px 10px', fontSize: '0.82rem' }}
               onChange={(e) => {
                 if (e.target.value) {
                   loadExampleScenario(e.target.value);
@@ -191,7 +205,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
               }}
               defaultValue=""
             >
-              <option value="" disabled>Select Example Scenario...</option>
+              <option value="" disabled>Load Demo Field...</option>
               {Object.entries(DEMO_SCENARIOS).map(([k, v]) => (
                 <option key={k} value={k}>{v.label}</option>
               ))}
@@ -200,11 +214,12 @@ export default function FarmAnalysisPage({ setActivePage }) {
         </div>
       </div>
 
+      {/* Error Alert */}
       {error && (
         <div style={{
           padding: '14px 18px',
-          background: 'rgba(239, 68, 68, 0.12)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
           borderRadius: 'var(--radius-md)',
           color: 'var(--status-danger)',
           fontSize: '0.88rem',
@@ -213,50 +228,53 @@ export default function FarmAnalysisPage({ setActivePage }) {
           gap: '10px'
         }}>
           <AlertTriangle size={18} />
-          <span>{error}</span>
+          <span><strong>Please note:</strong> {error}</span>
         </div>
       )}
 
-      {/* Main Form Flow */}
-      <form onSubmit={handleCalculate} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {/* STEP 1: CROP SELECTOR */}
+      {/* 5-Step Field Input Form */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        {/* SECTION 1: CROP SELECTION */}
         <div className="card">
           <div className="card-header">
             <div>
               <h3 className="card-title">
-                <Sprout size={18} style={{ color: 'var(--primary-400)' }} />
+                <Sprout size={18} style={{ color: 'var(--color-brand)' }} />
                 1. What are you growing?
               </h3>
-              <p className="card-subtitle">Choose the crop for this watering decision</p>
+              <p className="card-subtitle">Choose the crop you want to irrigate</p>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginTop: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
             {SUPPORTED_CROPS.map((c) => {
               const isSelected = farm.crop === c.id;
               return (
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => setFarm(prev => ({ ...prev, crop: c.id }))}
+                  onClick={() => {
+                    setFarm(prev => ({ ...prev, crop: c.id }));
+                    if (latestAnalysis) setLatestAnalysis(null);
+                  }}
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'flex-start',
-                    padding: '16px',
+                    padding: '14px 16px',
                     borderRadius: 'var(--radius-md)',
-                    border: isSelected ? '2px solid var(--primary-400)' : '1px solid var(--border-subtle)',
-                    background: isSelected ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-surface)',
+                    border: isSelected ? '2px solid var(--color-brand)' : '1px solid var(--border-default)',
+                    background: isSelected ? 'var(--color-brand-muted)' : '#ffffff',
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'all 0.15s',
+                    transition: 'all 0.15s ease',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '6px' }}>
                     <span style={{ fontSize: '1.6rem' }}>{c.icon}</span>
                     {isSelected && <Badge variant="success">Selected</Badge>}
                   </div>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: isSelected ? 'var(--primary-300)' : 'var(--text-main)' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.98rem', color: isSelected ? 'var(--color-brand-dark)' : 'var(--text-main)' }}>
                     {c.name}
                   </div>
                   <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
@@ -269,78 +287,115 @@ export default function FarmAnalysisPage({ setActivePage }) {
 
           <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <HelpCircle size={14} />
-            <span>Don't see your crop? Currently supporting major North & Central Indian grain and cash crops. More coming soon.</span>
+            <span>Currently supporting major regional food and cash crops. Additional crop profiles can be configured.</span>
           </div>
         </div>
 
-        {/* STEP 2: FIELD SIZE & LOCATION */}
+        {/* SECTION 2: FULLY DYNAMIC FIELD SIZE */}
         <div className="card">
           <div className="card-header">
             <div>
               <h3 className="card-title">
-                <MapPin size={18} style={{ color: 'var(--accent-blue)' }} />
-                2. How big is your field & where is it?
+                <MapPin size={18} style={{ color: 'var(--accent-sky)' }} />
+                2. How big is your field?
               </h3>
-              <p className="card-subtitle">Field size determines total volume (Litres) and pumping time</p>
+              <p className="card-subtitle">Enter the exact area of the field to be irrigated</p>
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginTop: '12px' }}>
-            <div>
-              <label className="form-label">Field Area</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.1"
-                  max="100"
-                  className="form-input"
-                  style={{ fontSize: '1.1rem', fontWeight: 600 }}
-                  placeholder="e.g. 2.0"
-                  value={farm.area_acres}
-                  onChange={(e) => setFarm(prev => ({ ...prev, area_acres: e.target.value }))}
-                  required
-                />
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                  Acres
-                </span>
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-                Enter total acreage of the plot to be watered.
+          <div style={{ maxWidth: '420px' }}>
+            <label className="form-label">Field Area</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="number"
+                step="any"
+                min="0.1"
+                max="500"
+                className="form-input"
+                style={{ fontSize: '1.1rem', fontWeight: 600 }}
+                placeholder="e.g. 2.5"
+                value={farm.area_acres}
+                onChange={(e) => setFarm(prev => ({ ...prev, area_acres: e.target.value }))}
+              />
+              <div style={{
+                padding: '9px 14px',
+                background: 'var(--bg-surface-subtle)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-sm)',
+                fontWeight: 600,
+                color: 'var(--text-main)',
+                fontSize: '0.9rem',
+                whiteSpace: 'nowrap'
+              }}>
+                Acres
               </div>
             </div>
 
-            <div>
-              <label className="form-label">Farm Location (State)</label>
-              <select
-                className="form-select"
-                value={farm.location}
-                onChange={(e) => setFarm(prev => ({ ...prev, location: e.target.value }))}
-              >
-                {SUPPORTED_REGIONS.map(r => (
-                  <option key={r.name} value={r.name}>{r.name} ({r.climate})</option>
-                ))}
-              </select>
-              <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-                Used for local weather forecast and regional evapotranspiration ($ET_0$).
-              </div>
+            {/* Optional Quick Shortcuts underneath */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
+              <span style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>Quick select:</span>
+              {[0.5, 1.0, 2.0, 5.0, 10.0].map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setFarm(prev => ({ ...prev, area_acres: val }))}
+                  style={{
+                    padding: '3px 8px',
+                    fontSize: '0.74rem',
+                    background: Number(farm.area_acres) === val ? 'var(--color-brand-muted)' : 'var(--bg-surface-subtle)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: Number(farm.area_acres) === val ? 'var(--color-brand-dark)' : 'var(--text-muted)',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {val} ac
+                </button>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* STEP 3: SOIL MOISTURE & SOIL TYPE */}
+        {/* SECTION 3: LOCATION */}
         <div className="card">
           <div className="card-header">
             <div>
               <h3 className="card-title">
-                <Droplets size={18} style={{ color: 'var(--primary-400)' }} />
-                3. How wet is your soil currently?
+                <MapPin size={18} style={{ color: 'var(--color-brand)' }} />
+                3. Where is your farm?
               </h3>
-              <p className="card-subtitle">Select your soil condition or enter estimated moisture percentage</p>
+              <p className="card-subtitle">Used for regional evapotranspiration ($ET_0$) and weather integration</p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          <div style={{ maxWidth: '420px' }}>
+            <label className="form-label">State / Region</label>
+            <select
+              className="form-select"
+              value={farm.location}
+              onChange={(e) => setFarm(prev => ({ ...prev, location: e.target.value }))}
+            >
+              {SUPPORTED_REGIONS.map(r => (
+                <option key={r.name} value={r.name}>{r.name} ({r.climate})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* SECTION 4: SOIL MOISTURE & TYPE */}
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3 className="card-title">
+                <Droplets size={18} style={{ color: 'var(--color-brand)' }} />
+                4. How wet is your soil now?
+              </h3>
+              <p className="card-subtitle">Choose a simple soil condition or enter an approximate percentage</p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {/* 3 Visual Preset Buttons */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
               <button
@@ -349,14 +404,14 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 style={{
                   padding: '12px',
                   borderRadius: 'var(--radius-sm)',
-                  border: farm.soil_moisture_percent === 25 ? '2px solid var(--accent-gold)' : '1px solid var(--border-subtle)',
-                  background: farm.soil_moisture_percent === 25 ? 'rgba(245, 158, 11, 0.12)' : 'var(--bg-surface)',
+                  border: Number(farm.soil_moisture_percent) === 25 ? '2px solid var(--accent-amber)' : '1px solid var(--border-default)',
+                  background: Number(farm.soil_moisture_percent) === 25 ? 'var(--accent-amber-muted)' : '#ffffff',
                   cursor: 'pointer',
                   textAlign: 'center',
                 }}
               >
                 <div style={{ fontSize: '1.2rem', marginBottom: '2px' }}>🏜️</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>Dry Soil</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>DRY</div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>~25% moisture</div>
               </button>
 
@@ -366,14 +421,14 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 style={{
                   padding: '12px',
                   borderRadius: 'var(--radius-sm)',
-                  border: farm.soil_moisture_percent === 45 ? '2px solid var(--primary-400)' : '1px solid var(--border-subtle)',
-                  background: farm.soil_moisture_percent === 45 ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-surface)',
+                  border: Number(farm.soil_moisture_percent) === 45 ? '2px solid var(--color-brand)' : '1px solid var(--border-default)',
+                  background: Number(farm.soil_moisture_percent) === 45 ? 'var(--color-brand-muted)' : '#ffffff',
                   cursor: 'pointer',
                   textAlign: 'center',
                 }}
               >
                 <div style={{ fontSize: '1.2rem', marginBottom: '2px' }}>🌱</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>Medium Moisture</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>MODERATE</div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>~45% moisture</div>
               </button>
 
@@ -383,20 +438,20 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 style={{
                   padding: '12px',
                   borderRadius: 'var(--radius-sm)',
-                  border: farm.soil_moisture_percent === 75 ? '2px solid var(--accent-blue)' : '1px solid var(--border-subtle)',
-                  background: farm.soil_moisture_percent === 75 ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-surface)',
+                  border: Number(farm.soil_moisture_percent) === 75 ? '2px solid var(--accent-sky)' : '1px solid var(--border-default)',
+                  background: Number(farm.soil_moisture_percent) === 75 ? 'var(--accent-sky-muted)' : '#ffffff',
                   cursor: 'pointer',
                   textAlign: 'center',
                 }}
               >
                 <div style={{ fontSize: '1.2rem', marginBottom: '2px' }}>💧</div>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>Moist / Saturated</div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>WET</div>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>~75% moisture</div>
               </button>
             </div>
 
             {/* Slider and Exact Number Input */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '16px', background: 'var(--bg-surface)', padding: '14px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: '16px', background: 'var(--bg-surface-subtle)', padding: '14px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
               <div>
                 <input
                   type="range"
@@ -405,7 +460,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
                   step="5"
                   value={farm.soil_moisture_percent || 0}
                   onChange={(e) => setFarm(prev => ({ ...prev, soil_moisture_percent: Number(e.target.value) }))}
-                  style={{ width: '100%', accentColor: 'var(--primary-400)', cursor: 'pointer' }}
+                  style={{ width: '100%', accentColor: 'var(--color-brand)', cursor: 'pointer' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
                   <span>0% (Bone dry)</span>
@@ -423,13 +478,12 @@ export default function FarmAnalysisPage({ setActivePage }) {
                   style={{ width: '80px', textAlign: 'center', fontWeight: 700, fontSize: '1rem' }}
                   value={farm.soil_moisture_percent}
                   onChange={(e) => setFarm(prev => ({ ...prev, soil_moisture_percent: e.target.value }))}
-                  required
                 />
                 <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600 }}>%</span>
               </div>
             </div>
 
-            {/* Soil Type Selector */}
+            {/* Soil Type */}
             <div>
               <label className="form-label">Soil Type</label>
               <select
@@ -445,29 +499,29 @@ export default function FarmAnalysisPage({ setActivePage }) {
           </div>
         </div>
 
-        {/* STEP 4: WEATHER & RAIN CHECK */}
+        {/* SECTION 5: WEATHER & RAIN */}
         <div className="card">
           <div className="card-header">
             <div>
               <h3 className="card-title">
-                <CloudRain size={18} style={{ color: 'var(--accent-blue)' }} />
-                4. Is rain expected in your area?
+                <CloudRain size={18} style={{ color: 'var(--accent-sky)' }} />
+                5. Is rain expected in your area?
               </h3>
-              <p className="card-subtitle">If rain is coming, FarmGuard credits it to save you pumping water</p>
+              <p className="card-subtitle">Upcoming rain is credited to reduce unnecessary tubewell pumping</p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: 'var(--bg-surface)', padding: '14px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', background: 'var(--bg-surface-subtle)', padding: '14px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-main)' }}>
-                  Live Rain Forecast ({farm.location})
+                  Live Weather Forecast for {farm.location}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                   {farm.forecast_rainfall_mm > 0
                     ? `Rain expected: ${farm.forecast_rainfall_mm} mm (${farm.rainfall_probability}% probability)`
                     : (farm.rainfall_probability > 0
-                      ? `${farm.rainfall_probability}% chance of light showers`
+                      ? `${farm.rainfall_probability}% probability of rain`
                       : 'No rain forecast in next 24-48 hours')}
                 </div>
               </div>
@@ -484,8 +538,8 @@ export default function FarmAnalysisPage({ setActivePage }) {
               </button>
             </div>
 
-            {/* Manual rain adjustment if desired */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+            {/* Manual rain values if needed */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
               <div>
                 <label className="form-label" style={{ fontSize: '0.78rem' }}>Rain Probability (%)</label>
                 <input
@@ -498,7 +552,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 />
               </div>
               <div>
-                <label className="form-label" style={{ fontSize: '0.78rem' }}>Expected Rain Depth (mm)</label>
+                <label className="form-label" style={{ fontSize: '0.78rem' }}>Forecast Rain Depth (mm)</label>
                 <input
                   type="number"
                   min="0"
@@ -513,7 +567,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
           </div>
         </div>
 
-        {/* Optional Tubewell Pump & Electricity Settings */}
+        {/* OPTIONAL: PUMP & ELECTRICITY SETTINGS */}
         <div className="card" style={{ padding: '14px 20px' }}>
           <button
             type="button"
@@ -532,8 +586,8 @@ export default function FarmAnalysisPage({ setActivePage }) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Gauge size={16} style={{ color: 'var(--accent-gold)' }} />
-              <span>Pump & Electricity Settings (Optional)</span>
+              <Gauge size={16} style={{ color: 'var(--accent-amber)' }} />
+              <span>Want to estimate pump and electricity use? (Optional)</span>
             </div>
             {showPumpOptions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
@@ -551,6 +605,9 @@ export default function FarmAnalysisPage({ setActivePage }) {
                     <option key={p.hp} value={p.hp}>{p.label}</option>
                   ))}
                 </select>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
+                  Standard Indian tubewell flow rate: ~28,000 L/hr (5 HP)
+                </div>
               </div>
 
               <div>
@@ -563,30 +620,35 @@ export default function FarmAnalysisPage({ setActivePage }) {
                   value={farm.electricity_tariff || 6}
                   onChange={(e) => setFarm(prev => ({ ...prev, electricity_tariff: Number(e.target.value) }))}
                 />
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
+                  Used to estimate electricity bill savings
+                </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* MAIN SUBMIT CTA */}
+        {/* PRIMARY CALCULATE BUTTON */}
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <button
-            type="submit"
+            type="button"
+            onClick={handleCalculate}
             disabled={loading}
             className="btn btn-primary"
             style={{
               flex: 1,
               padding: '14px 24px',
-              fontSize: '1.08rem',
+              fontSize: '1.05rem',
               fontWeight: 800,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '10px'
+              gap: '10px',
+              boxShadow: 'var(--shadow-md)'
             }}
           >
-            <Droplets size={20} />
-            {loading ? 'Calculating Water Plan...' : 'Calculate My Water Need 💧'}
+            <Droplets size={20} className={loading ? 'spin' : ''} />
+            {loading ? 'Calculating...' : 'Calculate My Water Need'}
           </button>
 
           <button
@@ -599,33 +661,33 @@ export default function FarmAnalysisPage({ setActivePage }) {
             Reset
           </button>
         </div>
-      </form>
+      </div>
 
-      {/* RESULT SECTION: YOUR FARM'S WATER PLAN */}
+      {/* RESULTS SCREEN: YOUR FARM'S WATER PLAN */}
       {analysis && rec && (
-        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '12px' }}>
+        <div id="water-plan-results" className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
           <div className="card" style={{
             padding: '28px',
-            background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.25) 0%, rgba(15, 23, 42, 0.95) 100%)',
-            borderColor: 'rgba(16, 185, 129, 0.4)'
+            border: '2px solid var(--color-brand)',
+            backgroundColor: '#ffffff'
           }}>
             {/* 1. Decision Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '20px' }}>
               <div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                  DECISION FOR YOUR FIELD
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  YOUR WATER PLAN
                 </div>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px', textTransform: 'capitalize' }}>
-                  Your {farm.crop} Water Plan
+                  {farm.crop} Field ({farm.area_acres} Acres in {farm.location})
                 </h2>
               </div>
 
               <div style={{
                 padding: '8px 18px',
                 borderRadius: 'var(--radius-full)',
-                background: rec.recommended_irrigation_mm === 0 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                border: rec.recommended_irrigation_mm === 0 ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid rgba(16, 185, 129, 0.4)',
-                color: rec.recommended_irrigation_mm === 0 ? 'var(--accent-blue)' : 'var(--primary-300)',
+                background: rec.recommended_irrigation_mm === 0 ? 'var(--accent-sky-muted)' : 'var(--color-brand-muted)',
+                border: rec.recommended_irrigation_mm === 0 ? '1px solid #bae6fd' : '1px solid var(--color-brand-border)',
+                color: rec.recommended_irrigation_mm === 0 ? 'var(--accent-sky)' : 'var(--color-brand-dark)',
                 fontWeight: 800,
                 fontSize: '1rem',
                 display: 'flex',
@@ -640,13 +702,13 @@ export default function FarmAnalysisPage({ setActivePage }) {
             {/* 2. In Simple Words Box */}
             <div style={{
               padding: '16px 20px',
-              background: 'var(--bg-surface)',
+              background: 'var(--bg-surface-subtle)',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border-subtle)',
               marginBottom: '20px',
               lineHeight: 1.6
             }}>
-              <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.98rem', marginBottom: '6px' }}>
+              <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.96rem', marginBottom: '4px' }}>
                 🗣️ In Simple Words:
               </div>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: 0 }}>
@@ -657,11 +719,11 @@ export default function FarmAnalysisPage({ setActivePage }) {
             {/* 3. Primary Metrics Grid */}
             <div className="grid-3" style={{ marginBottom: '20px' }}>
               {/* Recommended Water */}
-              <div style={{ padding: '18px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+              <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
                   💧 Recommended Water
                 </div>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--primary-300)', margin: '4px 0' }}>
+                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--color-brand-dark)', margin: '4px 0' }}>
                   {rec.recommended_irrigation_mm} <span style={{ fontSize: '1.1rem', color: 'var(--text-muted)' }}>mm</span>
                 </div>
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
@@ -670,30 +732,30 @@ export default function FarmAnalysisPage({ setActivePage }) {
               </div>
 
               {/* Water You Save */}
-              <div style={{ padding: '18px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+              <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
                   💧 Water You Could Save
                 </div>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--accent-blue)', margin: '4px 0' }}>
+                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--accent-sky)', margin: '4px 0' }}>
                   {waterAnalysis?.water_savings_liters ? `${waterAnalysis.water_savings_liters.toLocaleString()}` : '0'} <span style={{ fontSize: '1.1rem', color: 'var(--text-muted)' }}>L</span>
                 </div>
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                   {waterAnalysis?.water_savings_percent
                     ? `${waterAnalysis.water_savings_percent}% reduction vs baseline flood watering`
-                    : 'Optimal precision depth'}
+                    : 'Precision application'}
                 </div>
               </div>
 
               {/* Pumping Time & Electricity */}
-              <div style={{ padding: '18px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>
+              <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
                   ⚡ Pump & Electricity Impact
                 </div>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--accent-gold)', margin: '4px 0' }}>
+                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--accent-amber)', margin: '4px 0' }}>
                   {pumpRuntimeHours} <span style={{ fontSize: '1.1rem', color: 'var(--text-muted)' }}>hrs</span>
                 </div>
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  Estimated pump runtime ({selectedPumpObj.hp} HP tubewell) • <strong style={{ color: 'var(--accent-gold)' }}>{pumpHoursSaved} hrs saved</strong> (₹{moneySavedInr})
+                  Estimated pump runtime ({selectedPumpObj.hp} HP) • <strong style={{ color: 'var(--accent-amber)' }}>{pumpHoursSaved} hrs saved</strong> (₹{moneySavedInr})
                 </div>
               </div>
             </div>
@@ -701,7 +763,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
             {/* 4. Verified Farm Input Context Checklist */}
             <div style={{
               padding: '14px 18px',
-              background: 'rgba(255, 255, 255, 0.02)',
+              background: 'var(--bg-surface-subtle)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--border-subtle)',
               fontSize: '0.82rem',
@@ -714,7 +776,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
               <span><strong>Area:</strong> <span style={{ color: 'var(--text-main)' }}>{farm.area_acres} Acres</span></span>
               <span><strong>Soil Moisture:</strong> <span style={{ color: 'var(--text-main)' }}>{farm.soil_moisture_percent}%</span></span>
               <span><strong>Soil Type:</strong> <span style={{ textTransform: 'capitalize', color: 'var(--text-main)' }}>{farm.soil_type}</span></span>
-              <span><strong>Rain Offset:</strong> <span style={{ color: 'var(--accent-blue)' }}>{rec.expected_rain_offset_mm || 0} mm</span></span>
+              <span><strong>Rain Offset:</strong> <span style={{ color: 'var(--accent-sky)' }}>{rec.expected_rain_offset_mm || 0} mm</span></span>
               <span><strong>Location:</strong> <span style={{ color: 'var(--text-main)' }}>{farm.location}</span></span>
             </div>
 
@@ -723,9 +785,9 @@ export default function FarmAnalysisPage({ setActivePage }) {
               <div style={{
                 marginTop: '16px',
                 padding: '14px 18px',
-                background: 'rgba(16, 185, 129, 0.06)',
+                background: 'var(--color-brand-muted)',
                 borderRadius: 'var(--radius-sm)',
-                border: '1px solid rgba(16, 185, 129, 0.2)',
+                border: '1px solid var(--color-brand-border)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -734,8 +796,8 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 fontSize: '0.85rem'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Leaf size={18} style={{ color: '#a7f3d0' }} />
-                  <span><strong>Environmental Benefit:</strong> Prevents excess groundwater pumping and avoids <strong style={{ color: 'var(--primary-300)' }}>{envImpact.co2e_avoided_kg} kg CO₂e</strong> carbon emissions.</span>
+                  <Leaf size={18} style={{ color: 'var(--color-brand)' }} />
+                  <span><strong>Environmental Benefit:</strong> Prevents excess aquifer extraction and avoids <strong style={{ color: 'var(--color-brand-dark)' }}>{envImpact.co2e_avoided_kg} kg CO₂e</strong> emissions.</span>
                 </div>
                 <button
                   type="button"
@@ -773,7 +835,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 <div style={{
                   marginTop: '12px',
                   padding: '16px',
-                  background: 'var(--bg-surface)',
+                  background: 'var(--bg-surface-subtle)',
                   borderRadius: 'var(--radius-sm)',
                   border: '1px solid var(--border-subtle)',
                   fontSize: '0.8rem',

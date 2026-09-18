@@ -9,9 +9,9 @@ import {
   MapPin,
   Clock,
   Sparkles,
-  Play,
   RotateCcw,
-  CloudRain
+  CloudRain,
+  Sprout
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import { DEMO_SCENARIOS } from '../config/agriculturalData';
@@ -27,37 +27,37 @@ export default function OverviewPage({ setActivePage }) {
   } = useFarm();
 
   const analysis = latestAnalysis?.data || null;
-  const rec = analysis?.recommendation || null;
+  const rec = analysis?.irrigation_recommendation || analysis?.recommendation || null;
   const waterAnalysis = analysis?.water_analysis || null;
   const envImpact = analysis?.environmental_impact || null;
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-      {/* 1. Core Farmer-First Hero Section */}
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* 1. Core First Screen Hero */}
       <div className="card" style={{
         padding: '36px 32px',
-        background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.35) 0%, rgba(15, 23, 42, 0.95) 100%)',
-        borderColor: 'rgba(16, 185, 129, 0.35)',
-        position: 'relative',
-        overflow: 'hidden'
+        backgroundColor: '#ffffff',
+        border: '1px solid var(--border-default)',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-sm)'
       }}>
-        <div style={{ maxWidth: '780px' }}>
+        <div style={{ maxWidth: '800px' }}>
           <div style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
             padding: '4px 12px',
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
+            background: 'var(--color-brand-muted)',
+            border: '1px solid var(--color-brand-border)',
             borderRadius: 'var(--radius-full)',
-            color: 'var(--primary-300)',
+            color: 'var(--color-brand-dark)',
             fontSize: '0.8rem',
             fontWeight: 700,
             marginBottom: '16px',
             textTransform: 'uppercase',
             letterSpacing: '0.04em'
           }}>
-            🌱 Farmer-First Agricultural Decision Tool
+            🌾 Agricultural Decision Support Tool
           </div>
 
           <h1 style={{
@@ -68,17 +68,17 @@ export default function OverviewPage({ setActivePage }) {
             letterSpacing: '-0.02em',
             marginBottom: '14px'
           }}>
-            Use only the water your crop needs.
+            How much water does my crop need?
           </h1>
 
           <p style={{
             fontSize: '1.05rem',
-            color: 'var(--text-muted)',
+            color: 'var(--text-secondary)',
             lineHeight: 1.6,
             marginBottom: '24px',
-            maxWidth: '660px'
+            maxWidth: '680px'
           }}>
-            Tell us about your crop and field. FarmGuard calculates your exact irrigation need and shows how much water, tubewell pump time, and electricity you can save.
+            FarmGuard uses your crop, field conditions and weather information to estimate an irrigation requirement — helping you avoid unnecessary pumping, save water, and reduce electricity costs.
           </p>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
@@ -97,156 +97,191 @@ export default function OverviewPage({ setActivePage }) {
               onClick={() => setActivePage?.('architecture')}
               style={{ padding: '12px 20px', fontSize: '0.95rem' }}
             >
-              See How It Works
+              How It Works
             </button>
           </div>
         </div>
       </div>
 
-      {/* 2. Three Immediate Benefit Blocks */}
-      <div className="grid-3">
-        <div className="card" style={{ padding: '22px', borderLeft: '4px solid var(--accent-blue)' }}>
-          <div style={{
-            width: 42,
-            height: 42,
-            borderRadius: 'var(--radius-sm)',
-            background: 'rgba(56, 189, 248, 0.12)',
-            color: 'var(--accent-blue)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: '14px'
-          }}>
-            <Droplets size={22} />
-          </div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-            💧 Save Water
-          </h3>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Know how much water your crop actually needs. Avoid excess flooding that damages roots and wastes groundwater.
-          </p>
-        </div>
-
-        <div className="card" style={{ padding: '22px', borderLeft: '4px solid var(--accent-gold)' }}>
-          <div style={{
-            width: 42,
-            height: 42,
-            borderRadius: 'var(--radius-sm)',
-            background: 'rgba(245, 158, 11, 0.12)',
-            color: 'var(--accent-gold)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: '14px'
-          }}>
-            <Zap size={22} />
-          </div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-            ⚡ Save Electricity
-          </h3>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Less unnecessary pumping means shorter tubewell runtime, lower electricity bills, and less diesel motor fuel.
-          </p>
-        </div>
-
-        <div className="card" style={{ padding: '22px', borderLeft: '4px solid var(--primary-400)' }}>
-          <div style={{
-            width: 42,
-            height: 42,
-            borderRadius: 'var(--radius-sm)',
-            background: 'rgba(16, 185, 129, 0.12)',
-            color: 'var(--primary-400)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: '14px'
-          }}>
-            <Leaf size={22} />
-          </div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-            🌱 Help the Environment
-          </h3>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Using less water and power stabilizes local aquifers and prevents unnecessary carbon emissions.
-          </p>
-        </div>
-      </div>
-
-      {/* 3. Three Core Questions Answered */}
-      <div className="card" style={{ padding: '28px' }}>
-        <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px' }}>
-            How FarmGuard Works For You
-          </h3>
-          <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>
-            Simple answers to common questions about your field water management.
+      {/* 2. What FarmGuard Helps You Understand (3 Benefit Blocks) */}
+      <div>
+        <div style={{ marginBottom: '14px' }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '2px' }}>
+            What FarmGuard Helps You Understand
+          </h2>
+          <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+            Simple, actionable insights to guide your daily field watering decisions.
           </p>
         </div>
 
         <div className="grid-3">
-          <div style={{ padding: '16px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary-400)', textTransform: 'uppercase', marginBottom: '6px' }}>
-              1. What does it do?
+          <div className="card" style={{ padding: '22px', borderLeft: '4px solid var(--accent-sky)' }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent-sky-muted)',
+              color: 'var(--accent-sky)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '12px'
+            }}>
+              <Droplets size={20} />
             </div>
-            <div style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-              FarmGuard tells you how much water your crop may need.
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
+              💧 Water Needed
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              How much water your field actually needs based on soil moisture and upcoming rain.
+            </p>
+          </div>
+
+          <div className="card" style={{ padding: '22px', borderLeft: '4px solid var(--accent-amber)' }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent-amber-muted)',
+              color: 'var(--accent-amber)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '12px'
+            }}>
+              <Zap size={20} />
             </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              It checks your crop type, soil moisture, and local weather forecast to give a clear watering recommendation.
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
+              ⚡ Pumping & Electricity
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              Understand your tubewell pumping hours and potential electricity cost savings.
+            </p>
+          </div>
+
+          <div className="card" style={{ padding: '22px', borderLeft: '4px solid var(--color-brand)' }}>
+            <div style={{
+              width: 40,
+              height: 40,
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--color-brand-muted)',
+              color: 'var(--color-brand)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '12px'
+            }}>
+              <Leaf size={20} />
+            </div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
+              🌱 Environmental Impact
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              See the positive impact of groundwater conservation and avoided pumping carbon emissions.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Numbered 5-Step Visual Farmer Guide */}
+      <div className="card" style={{ padding: '24px' }}>
+        <div style={{ marginBottom: '18px' }}>
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '2px' }}>
+            How FarmGuard Works (Step-by-Step)
+          </h2>
+          <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+            Follow 5 simple steps to calculate a precision water plan for your field.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
+          <div style={{ padding: '14px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--color-brand)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Step 1
+            </div>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-main)', marginBottom: '4px' }}>
+              Your Crop
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              What are you growing? (Wheat, Rice, Maize, Sugarcane)
             </div>
           </div>
 
-          <div style={{ padding: '16px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-blue)', textTransform: 'uppercase', marginBottom: '6px' }}>
-              2. Why use it?
+          <div style={{ padding: '14px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--color-brand)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Step 2
             </div>
-            <div style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-              To avoid giving more water than necessary.
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-main)', marginBottom: '4px' }}>
+              Your Field
             </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              Over-watering wastes electricity, washes away expensive fertilizer, and harms crop root health.
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              How big is your field? (e.g. 0.5, 1.25, 2.5 acres)
             </div>
           </div>
 
-          <div style={{ padding: '16px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-gold)', textTransform: 'uppercase', marginBottom: '6px' }}>
-              3. What do I get?
+          <div style={{ padding: '14px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--color-brand)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Step 3
             </div>
-            <div style={{ fontSize: '0.98rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-              Water plan + water saved + pump impact.
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-main)', marginBottom: '4px' }}>
+              Field Conditions
             </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-              You receive exact water depth (mm), volume (Litres), estimated pump hours, and electricity savings.
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              How wet is the soil? (Dry, Moderate, Wet)
+            </div>
+          </div>
+
+          <div style={{ padding: '14px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--color-brand)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Step 4
+            </div>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-main)', marginBottom: '4px' }}>
+              Weather
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Is rain expected? (Auto-checked from live forecast)
+            </div>
+          </div>
+
+          <div style={{ padding: '14px', background: 'var(--color-brand-muted)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-brand-border)' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--color-brand-dark)', textTransform: 'uppercase', marginBottom: '4px' }}>
+              Step 5
+            </div>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--color-brand-dark)', marginBottom: '4px' }}>
+              Your Result
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              FarmGuard calculates water depth (mm) & pumping time.
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4. Active Field Status or Initial Invitation */}
+      {/* 4. Active Field Water Plan or Demo Scenarios */}
       {latestAnalysis && rec ? (
         <div className="card" style={{
           padding: '24px',
-          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.9))',
-          borderColor: 'rgba(16, 185, 129, 0.3)'
+          border: '2px solid var(--color-brand)',
+          backgroundColor: '#ffffff'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
             <div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
                 Latest Water Plan for Your Field
               </div>
               <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'capitalize' }}>
                 {farm.crop} • {farm.area_acres} Acres in {farm.location}
               </h3>
             </div>
-            <Badge variant={rec.status.toLowerCase().includes('hold') || rec.status.toLowerCase().includes('reduced') ? 'info' : 'success'}>
+            <Badge variant="success">
               {rec.status}
             </Badge>
           </div>
 
           <div className="grid-3" style={{ margin: '14px 0' }}>
-            <div style={{ padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>RECOMMENDED WATER</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary-300)' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 600 }}>RECOMMENDED WATER</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--color-brand-dark)' }}>
                 {rec.recommended_irrigation_mm} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>mm</span>
               </div>
               <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
@@ -254,23 +289,23 @@ export default function OverviewPage({ setActivePage }) {
               </div>
             </div>
 
-            <div style={{ padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>WATER YOU SAVE</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-blue)' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 600 }}>WATER YOU SAVE</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-sky)' }}>
                 {waterAnalysis?.water_savings_liters ? `${waterAnalysis.water_savings_liters.toLocaleString()} L` : '0 L'}
               </div>
               <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                {waterAnalysis?.water_savings_percent ? `${waterAnalysis.water_savings_percent}% reduction` : 'Optimized application'}
+                {waterAnalysis?.water_savings_percent ? `${waterAnalysis.water_savings_percent}% reduction` : 'Precision depth'}
               </div>
             </div>
 
-            <div style={{ padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>PUMP TIME SAVED</div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-gold)' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 600 }}>PUMP TIME SAVED</div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-amber)' }}>
                 {waterAnalysis?.pump_hours_saved ? `${waterAnalysis.pump_hours_saved} hrs` : '0 hrs'}
               </div>
               <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                ≈ {waterAnalysis?.electricity_saved_kwh ? `${waterAnalysis.electricity_saved_kwh} kWh saved` : 'Standard tubewell'}
+                ≈ {waterAnalysis?.electricity_saved_kwh ? `${waterAnalysis.electricity_saved_kwh} kWh electricity` : 'Standard tubewell'}
               </div>
             </div>
           </div>
@@ -293,7 +328,7 @@ export default function OverviewPage({ setActivePage }) {
                 🌾 Ready to Calculate for Your Field?
               </h3>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Choose your crop and soil to get an immediate water plan, or load a sample regional field below:
+                Enter your field size and crop in Check Water Need, or try an example field below:
               </p>
             </div>
 
@@ -304,8 +339,8 @@ export default function OverviewPage({ setActivePage }) {
 
           {/* Quick Demo Scenarios for Judges */}
           <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '10px' }}>
-              Try an Example Field (For Judges & Demo):
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', fontWeight: 600, textTransform: 'uppercase', marginBottom: '10px' }}>
+              Try an Example Field:
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
               {Object.entries(DEMO_SCENARIOS).map(([key, item]) => (
@@ -320,20 +355,26 @@ export default function OverviewPage({ setActivePage }) {
                     flexDirection: 'column',
                     alignItems: 'flex-start',
                     padding: '12px 14px',
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--bg-surface-subtle)',
+                    border: '1px solid var(--border-default)',
                     borderRadius: 'var(--radius-sm)',
                     cursor: 'pointer',
                     textAlign: 'left',
-                    transition: 'all 0.15s'
+                    transition: 'all 0.15s ease'
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--primary-400)'}
-                  onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--color-brand)';
+                    e.currentTarget.style.backgroundColor = 'var(--color-brand-muted)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border-default)';
+                    e.currentTarget.style.backgroundColor = 'var(--bg-surface-subtle)';
+                  }}
                 >
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)', textTransform: 'capitalize' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-main)', textTransform: 'capitalize' }}>
                     {item.crop} in {item.location}
                   </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                     {item.area_acres} Acres • {item.soil_type}
                   </div>
                 </button>
