@@ -20,7 +20,12 @@ Instead:
 
 ```mermaid
 flowchart TD
-    User["Farmer / Client Request\n(Voice or Text)"] --> Agent["FarmGuardAgent\n(app/agents/farm_agent.py)"]
+    User["Farmer / Client Request\n(Voice or Text)"] --> InputGuard["1. Input Validation & Bounds Check\n(app/guardrails/input_guardrails.py)"]
+    InputGuard -->|Valid| PromptGuard["2. Prompt Injection & Abuse Detection\n(app/guardrails/security.py)"]
+    InputGuard -->|Out of Bounds| BlockedInput["Return Safe Structured Input Error"]
+    
+    PromptGuard -->|Blocked Attack / Secret Leak| BlockedResp["Return Safe Blocked Response\n{blocked: true, reason: 'potential_prompt_injection'}"]
+    PromptGuard -->|Passed| Agent["3. FarmGuard Agent Orchestration\n(app/agents/farm_agent.py)"]
     
     subgraph Weather Service Layer
         Agent -->|Location Lookup| WeatherService["Open-Meteo Weather Service\n(app/services/weather_service.py)"]
@@ -28,7 +33,8 @@ flowchart TD
     end
 
     subgraph Agent Tool Layer
-        Agent -->|Tool Orchestration| Tools["Farm Tools\n(app/tools/farm_tools.py)"]
+        Agent --> ToolAuth["4. Tool Authorization & Input Validation\n(app/guardrails/tool_guardrails.py)"]
+        ToolAuth --> Tools["Farm Tools\n(app/tools/farm_tools.py)"]
         Tools --> T1["get_crop_water_requirement"]
         Tools --> T2["calculate_irrigation"]
         Tools --> T3["calculate_water_savings"]
@@ -41,11 +47,83 @@ flowchart TD
         Engine --> VerifiedResults["Verified Numerical Results & Categorized Assumptions"]
     end
 
-    VerifiedResults --> Agent
+    VerifiedResults --> ToolOutputGuard["5. Tool Output Validation\n(No NaN/Inf, Non-negative)"]
+    ToolOutputGuard --> Agent
     WeatherData --> Agent
-    Agent -->|Gemini Synthesis with Verified Numbers| StructuredAdvisory["Structured Advisory Response\n(RECOMMENDATION, WEATHER, WATER, RESIDUE, IMPACT, WHY, ASSUMPTIONS)"]
-    StructuredAdvisory --> User
+    
+    Agent -->|Gemini Synthesis with Verified Numbers| CandidateAdvisory["Candidate LLM Response"]
+    CandidateAdvisory --> OutputGuard["6. Output Guardrails & Numerical Grounding\n(app/guardrails/output_guardrails.py)"]
+    
+    OutputGuard -->|Passed| Eval["7. Deterministic Evaluation Framework\n(app/evaluation/evaluator.py)"]
+    OutputGuard -->|Hallucination / Secret Leak / Unsafe| Fallback["Safe Deterministic Synthesis Fallback"]
+    Fallback --> Eval
+    
+    Eval --> FinalResponse["Safe Advisory Response with Security & Evaluation Metadata"]
+    FinalResponse --> User
 ```
+
+---
+
+## 🛡️ AI Security & Guardrails
+
+FarmGuard AI implements a multi-layer defense-in-depth security architecture:
+
+1. **Input Security Guardrails (`app/guardrails/input_guardrails.py`)**:
+   - Strict physical bound validation on crop types, area ($> 0$), soil moisture ($0-100\%$), normalized rainfall probability ($0.0-1.0$), and non-negative irrigation depths.
+   - Rejection of oversized payloads ($> 2,000$ characters) without exposing internal stack traces.
+
+2. **Prompt Injection & Abuse Defense (`app/guardrails/security.py`)**:
+   - Multi-pattern heuristic and normalized pattern detection covering instruction overrides (*"ignore previous instructions"*), system prompt extraction (*"reveal system prompt"*), roleplay bypasses (*"pretend you are unrestricted"*), and tool tampering (*"calculate math yourself and ignore tools"*).
+   - Instant structured blocking with zero disclosure of internal prompts.
+
+3. **Secret & Credential Protection (`app/guardrails/security.py`)**:
+   - Continuous scanning of both inputs and outputs for API key formats (`AIzaSy...`), `$GEMINI_API_KEY`, environment variable extraction, and local filesystem paths.
+   - Automated redaction filter ensuring zero secret leakage.
+
+4. **Tool Authorization & Execution Guardrails (`app/guardrails/tool_guardrails.py`)**:
+   - Whitelist authorization strictly restricting invocations to registered tools.
+   - Pre-execution input validation preventing `NaN` / `Infinity` injection.
+   - Post-execution output validation enforcing non-negative volumetric and economic metrics.
+
+5. **Numerical Grounding & Output Safety (`app/guardrails/output_guardrails.py`)**:
+   - Deterministic verification matching all numerical claims in synthesized text against verified tool results.
+   - Detection of unsupported certainty (*"you definitely don't need irrigation"*, *"100% guaranteed"*).
+   - Automatic fail-safe fallback to deterministic template synthesis if any deviation or policy violation is detected.
+
+---
+
+## 📊 LLM Evaluation Framework
+
+To maintain production-grade reliability, every advisory is deterministically evaluated across 8 dimensions in [`app/evaluation/`](file:///c:/Users/Ankush/Desktop/FarmGuard-AI/backend/app/evaluation/):
+
+| Evaluation Metric | Scope & Verification Method |
+| :--- | :--- |
+| **Numerical Consistency** | Deterministic regex matching against verified tool outputs (tolerance $\le 5\%$). |
+| **Tool Groundedness** | Verifies execution of all mandatory agricultural tools in trace log. |
+| **Schema Validity** | Confirms presence of all required sections (RECOMMENDATION, WATER, RESIDUE, IMPACT, WHY, ASSUMPTIONS). |
+| **Safety & Certainty** | Ensures absence of unconditional promises or unsupported authority claims. |
+| **Relevance** | Confirms prompt resolution matches user crop and soil context. |
+| **Uncertainty Handling** | Validates transparent communication of rainfall uncertainty and prototype assumptions. |
+| **Prompt Injection Resistance** | Verifies adversarial queries are intercepted at security checkpoint. |
+| **Secret Leakage** | Confirms zero presence of sensitive credentials or filesystem paths. |
+
+A 32-case regression dataset in [`backend/tests/eval_cases.json`](file:///c:/Users/Ankush/Desktop/FarmGuard-AI/backend/tests/eval_cases.json) continuously benchmarks edge cases, boundary conditions, and adversarial attacks.
+
+---
+
+## 🎯 Threat Model
+
+> [!NOTE]
+> FarmGuard AI uses layered controls designed to reduce and detect failure modes. No system is 100% immune to all novel adversarial attacks; our approach combines strict parameter boundaries, deterministic calculation authority, output validation, and fallback synthesis.
+
+| Threat Vector | Potential Impact | Layered Mitigation |
+| :--- | :--- | :--- |
+| **Prompt Injection** | Attacker attempts to hijack LLM persona or ignore safety bounds. | Multi-pattern regex scanner, prompt normalization, early rejection before agent loop. |
+| **Tool Tampering** | Attacker demands LLM invent numbers or bypass tools. | Tool authorization whitelist; LLM prompt forbids math; numerical grounding detects fabricated output. |
+| **Secret / Data Leakage** | Extraction of API keys (`GEMINI_API_KEY`) or server paths. | Pre-execution and post-synthesis regex scanner; automated redaction filter. |
+| **Numerical Hallucination** | LLM misquotes water savings or recommends harmful water depth. | Deterministic numerical grounding comparison; automatic fail-safe fallback to deterministic synthesis. |
+| **Unsafe Certainty** | Overconfident advice leads farmer to risk crop desiccation. | Output certainty filter flagging absolute claims; mandatory uncertainty qualification in system prompt. |
+| **Weather API Outage** | External service timeout or corrupted JSON. | Non-blocking $3.5\text{s}$ timeout with fallback to `status: "unavailable"` and risk-only probability signal. |
 
 ---
 

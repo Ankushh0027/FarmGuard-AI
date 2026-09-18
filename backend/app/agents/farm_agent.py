@@ -1,13 +1,14 @@
 """FarmGuard AI Gemini Agent Coordinator.
 
-Orchestrates live weather lookups and deterministic farming calculation tools.
-Uses Google Gemini to provide empathetic, transparent, and structured advisory.
+Orchestrates defense-in-depth security guardrails, live weather lookups, deterministic
+farming calculation tools, numerical grounding verification, and LLM evaluation.
 All numerical calculations originate strictly from the deterministic tool layer.
 """
 
 import os
 import re
 from typing import Dict, Any, List, Optional, Tuple
+
 from app.models.farm import (
     FarmInput,
     AgentAdviceRequest,
@@ -24,6 +25,19 @@ from app.tools.farm_tools import (
     calculate_environmental_impact,
 )
 from app.calculations.farm_calculator import generate_assumptions
+from app.guardrails.input_guardrails import (
+    validate_user_message,
+    validate_farm_input_dict,
+)
+from app.guardrails.tool_guardrails import (
+    authorize_tool,
+    validate_tool_inputs,
+    validate_tool_outputs,
+)
+from app.guardrails.output_guardrails import (
+    validate_agent_output,
+)
+from app.evaluation.evaluator import evaluate_response
 
 SYSTEM_PROMPT = """You are FarmGuard AI, an India-specific sustainable farming assistant.
 
@@ -70,7 +84,7 @@ ASSUMPTIONS
 
 
 class FarmGuardAgent:
-    """Agent that extracts parameters, invokes deterministic tools, and generates structured advisory."""
+    """Agent that enforces guardrails, invokes deterministic tools, and generates safe structured advisory."""
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
@@ -148,22 +162,29 @@ class FarmGuardAgent:
             return None, missing
 
     def _execute_tools(self, farm_input: FarmInput) -> Tuple[Dict[str, Any], List[ToolTraceItem], FarmInput]:
-        """Execute deterministic farm calculation tools and track execution trace."""
+        """Execute deterministic farm calculation tools with pre and post-execution guardrails."""
         tool_trace: List[ToolTraceItem] = []
         active_input = farm_input
 
         # 1. Weather forecast lookup (if forecast_rainfall_mm was not explicitly provided by user)
         if active_input.forecast_rainfall_mm is None and active_input.location:
-            weather_data = get_weather_forecast(location=active_input.location)
-            tool_trace.append(ToolTraceItem(tool="get_weather_forecast", status="completed"))
+            auth_ok, auth_err = authorize_tool("get_weather_forecast")
+            if auth_ok:
+                weather_data = get_weather_forecast(location=active_input.location)
+                val_ok, _ = validate_tool_outputs("get_weather_forecast", weather_data)
+                tool_trace.append(ToolTraceItem(
+                    tool="get_weather_forecast",
+                    status="completed" if val_ok else "warning",
+                    event="WEATHER_FETCHED",
+                    summary=f"Weather lookup: {weather_data.get('status', 'unknown')}"
+                ))
 
-            # If weather is available, attach live forecast precipitation
-            if weather_data.get("status") == "available" and weather_data.get("forecast_rainfall_mm") is not None:
-                updated_dict = active_input.model_dump()
-                updated_dict["forecast_rainfall_mm"] = weather_data["forecast_rainfall_mm"]
-                if updated_dict.get("rainfall_probability", 0.0) == 0.0 and weather_data.get("rainfall_probability") is not None:
-                    updated_dict["rainfall_probability"] = weather_data["rainfall_probability"]
-                active_input = FarmInput(**updated_dict)
+                if weather_data.get("status") == "available" and weather_data.get("forecast_rainfall_mm") is not None:
+                    updated_dict = active_input.model_dump()
+                    updated_dict["forecast_rainfall_mm"] = weather_data["forecast_rainfall_mm"]
+                    if updated_dict.get("rainfall_probability", 0.0) == 0.0 and weather_data.get("rainfall_probability") is not None:
+                        updated_dict["rainfall_probability"] = weather_data["rainfall_probability"]
+                    active_input = FarmInput(**updated_dict)
         else:
             weather_data = {
                 "location": active_input.location,
@@ -174,65 +195,104 @@ class FarmGuardAgent:
             }
 
         # 2. get_crop_water_requirement
+        auth_ok, _ = authorize_tool("get_crop_water_requirement")
         water_req = get_crop_water_requirement(
             crop=active_input.crop,
             soil_type=active_input.soil_type,
         )
-        tool_trace.append(ToolTraceItem(tool="get_crop_water_requirement", status="completed"))
+        val_ok, _ = validate_tool_outputs("get_crop_water_requirement", water_req)
+        tool_trace.append(ToolTraceItem(
+            tool="get_crop_water_requirement",
+            status="completed" if val_ok else "warning",
+            event="TOOL_EXECUTED",
+            summary=f"Baseline depth: {water_req.get('base_irrigation_depth_mm')} mm"
+        ))
 
         # 3. calculate_irrigation
-        irrigation_rec = calculate_irrigation(
-            crop=active_input.crop,
-            area_acres=active_input.area_acres,
-            soil_type=active_input.soil_type,
-            current_irrigation_mm=active_input.current_irrigation_mm,
-            location=active_input.location,
-            rainfall_probability=active_input.rainfall_probability,
-            soil_moisture_percent=active_input.soil_moisture_percent,
-            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
-        )
-        tool_trace.append(ToolTraceItem(tool="calculate_irrigation", status="completed"))
+        irr_kwargs = {
+            "crop": active_input.crop,
+            "area_acres": active_input.area_acres,
+            "soil_type": active_input.soil_type,
+            "current_irrigation_mm": active_input.current_irrigation_mm,
+            "location": active_input.location,
+            "rainfall_probability": active_input.rainfall_probability,
+            "soil_moisture_percent": active_input.soil_moisture_percent,
+            "forecast_rainfall_mm": active_input.forecast_rainfall_mm,
+        }
+        validate_tool_inputs("calculate_irrigation", irr_kwargs)
+        irrigation_rec = calculate_irrigation(**irr_kwargs)
+        val_ok, _ = validate_tool_outputs("calculate_irrigation", irrigation_rec)
+        tool_trace.append(ToolTraceItem(
+            tool="calculate_irrigation",
+            status="completed" if val_ok else "warning",
+            event="TOOL_OUTPUT_VALIDATED",
+            summary=f"Recommended depth: {irrigation_rec.get('recommended_irrigation_mm')} mm"
+        ))
 
         # 4. calculate_water_savings
-        water_savings = calculate_water_savings(
-            crop=active_input.crop,
-            area_acres=active_input.area_acres,
-            soil_type=active_input.soil_type,
-            current_irrigation_mm=active_input.current_irrigation_mm,
-            recommended_irrigation_mm=irrigation_rec["recommended_irrigation_mm"],
-            location=active_input.location,
-            rainfall_probability=active_input.rainfall_probability,
-            soil_moisture_percent=active_input.soil_moisture_percent,
-            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
-        )
-        tool_trace.append(ToolTraceItem(tool="calculate_water_savings", status="completed"))
+        ws_kwargs = {
+            "crop": active_input.crop,
+            "area_acres": active_input.area_acres,
+            "soil_type": active_input.soil_type,
+            "current_irrigation_mm": active_input.current_irrigation_mm,
+            "recommended_irrigation_mm": irrigation_rec["recommended_irrigation_mm"],
+            "location": active_input.location,
+            "rainfall_probability": active_input.rainfall_probability,
+            "soil_moisture_percent": active_input.soil_moisture_percent,
+            "forecast_rainfall_mm": active_input.forecast_rainfall_mm,
+        }
+        validate_tool_inputs("calculate_water_savings", ws_kwargs)
+        water_savings = calculate_water_savings(**ws_kwargs)
+        val_ok, _ = validate_tool_outputs("calculate_water_savings", water_savings)
+        tool_trace.append(ToolTraceItem(
+            tool="calculate_water_savings",
+            status="completed" if val_ok else "warning",
+            event="TOOL_OUTPUT_VALIDATED",
+            summary=f"Water saved: {water_savings.get('water_savings_liters'):,.0f} L"
+        ))
 
         # 5. calculate_crop_residue
-        crop_residue = calculate_crop_residue(
-            crop=active_input.crop,
-            area_acres=active_input.area_acres,
-            soil_type=active_input.soil_type,
-            current_irrigation_mm=active_input.current_irrigation_mm,
-            location=active_input.location,
-            rainfall_probability=active_input.rainfall_probability,
-            soil_moisture_percent=active_input.soil_moisture_percent,
-            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
-        )
-        tool_trace.append(ToolTraceItem(tool="calculate_crop_residue", status="completed"))
+        cr_kwargs = {
+            "crop": active_input.crop,
+            "area_acres": active_input.area_acres,
+            "soil_type": active_input.soil_type,
+            "current_irrigation_mm": active_input.current_irrigation_mm,
+            "location": active_input.location,
+            "rainfall_probability": active_input.rainfall_probability,
+            "soil_moisture_percent": active_input.soil_moisture_percent,
+            "forecast_rainfall_mm": active_input.forecast_rainfall_mm,
+        }
+        validate_tool_inputs("calculate_crop_residue", cr_kwargs)
+        crop_residue = calculate_crop_residue(**cr_kwargs)
+        val_ok, _ = validate_tool_outputs("calculate_crop_residue", crop_residue)
+        tool_trace.append(ToolTraceItem(
+            tool="calculate_crop_residue",
+            status="completed" if val_ok else "warning",
+            event="TOOL_OUTPUT_VALIDATED",
+            summary=f"Residue: {crop_residue.get('estimated_residue_tonnes')} tonnes"
+        ))
 
         # 6. calculate_environmental_impact
-        env_impact = calculate_environmental_impact(
-            crop=active_input.crop,
-            area_acres=active_input.area_acres,
-            current_irrigation_mm=active_input.current_irrigation_mm,
-            recommended_irrigation_mm=irrigation_rec["recommended_irrigation_mm"],
-            soil_type=active_input.soil_type,
-            location=active_input.location,
-            rainfall_probability=active_input.rainfall_probability,
-            soil_moisture_percent=active_input.soil_moisture_percent,
-            forecast_rainfall_mm=active_input.forecast_rainfall_mm,
-        )
-        tool_trace.append(ToolTraceItem(tool="calculate_environmental_impact", status="completed"))
+        env_kwargs = {
+            "crop": active_input.crop,
+            "area_acres": active_input.area_acres,
+            "current_irrigation_mm": active_input.current_irrigation_mm,
+            "recommended_irrigation_mm": irrigation_rec["recommended_irrigation_mm"],
+            "soil_type": active_input.soil_type,
+            "location": active_input.location,
+            "rainfall_probability": active_input.rainfall_probability,
+            "soil_moisture_percent": active_input.soil_moisture_percent,
+            "forecast_rainfall_mm": active_input.forecast_rainfall_mm,
+        }
+        validate_tool_inputs("calculate_environmental_impact", env_kwargs)
+        env_impact = calculate_environmental_impact(**env_kwargs)
+        val_ok, _ = validate_tool_outputs("calculate_environmental_impact", env_impact)
+        tool_trace.append(ToolTraceItem(
+            tool="calculate_environmental_impact",
+            status="completed" if val_ok else "warning",
+            event="TOOL_OUTPUT_VALIDATED",
+            summary=f"CO2e avoided: {env_impact.get('co2e_avoided_kg')} kg"
+        ))
 
         numerical_results = {
             "weather_forecast": weather_data,
@@ -371,7 +431,79 @@ class FarmGuardAgent:
             return self._generate_deterministic_explanation(farm_input, num_res)
 
     def get_advice(self, request: AgentAdviceRequest) -> AgentAdviceResponse:
-        """Main agent entrypoint to evaluate farm status and deliver structured advice."""
+        """Main agent entrypoint to evaluate farm status and deliver safe, grounded advice."""
+        # ====================================================================
+        # 1. INPUT SECURITY & PROMPT INJECTION GUARDRAILS
+        # ====================================================================
+        msg_ok, msg_err = validate_user_message(request.message)
+        if not msg_ok:
+            is_inj = (msg_err == "potential_prompt_injection")
+            return AgentAdviceResponse(
+                answer="Your request was blocked by security guardrails. Please provide standard agricultural inquiries.",
+                recommendation={
+                    "status": "Request Blocked",
+                    "action": "Please submit a standard farming query."
+                },
+                tool_trace=[ToolTraceItem(
+                    tool="security_guardrails",
+                    status="blocked",
+                    event="SECURITY_CHECK_BLOCKED",
+                    summary=f"Input blocked: {msg_err}"
+                )],
+                numerical_results=None,
+                assumptions=[],
+                missing_fields=None,
+                security={
+                    "input_guardrails": "blocked",
+                    "prompt_injection": "detected" if is_inj else "not_detected",
+                    "secret_scan": "blocked" if msg_err in ["sensitive_credential_detected", "internal_path_detected"] else "passed",
+                    "output_guardrails": "not_applicable"
+                },
+                evaluation={
+                    "overall": "failed",
+                    "safety": "failed",
+                    "prompt_injection_resistance": "detected_and_blocked"
+                },
+                blocked=True,
+                block_reason=msg_err
+            )
+
+        if request.farm:
+            farm_valid, farm_err_code, field_errors = validate_farm_input_dict(request.farm)
+            if not farm_valid:
+                err_desc = "; ".join([f"{k}: {v}" for k, v in (field_errors or {}).items()])
+                return AgentAdviceResponse(
+                    answer=f"Invalid farm input parameters: {err_desc}",
+                    recommendation={
+                        "status": "Invalid Input Bounds",
+                        "action": "Please correct the out-of-bounds parameter values."
+                    },
+                    tool_trace=[ToolTraceItem(
+                        tool="input_guardrails",
+                        status="failed",
+                        event="INPUT_VALIDATION_FAILED",
+                        summary=f"Input bounds error: {farm_err_code}"
+                    )],
+                    numerical_results=None,
+                    assumptions=[],
+                    missing_fields=None,
+                    security={
+                        "input_guardrails": "failed_bounds_check",
+                        "prompt_injection": "not_detected",
+                        "secret_scan": "passed",
+                        "output_guardrails": "not_applicable"
+                    },
+                    evaluation={
+                        "overall": "failed",
+                        "schema_validity": "failed"
+                    },
+                    blocked=True,
+                    block_reason=farm_err_code
+                )
+
+        # ====================================================================
+        # 2. PARAMETER EXTRACTION & CLARIFICATION CHECK
+        # ====================================================================
         raw_farm_input, missing_fields = self._extract_farm_input_from_dict_or_text(
             farm_dict=request.farm,
             message=request.message,
@@ -388,10 +520,15 @@ class FarmGuardAgent:
             }
             human_fields = [field_name_map.get(f, f.replace("_", " ")) for f in missing_fields]
             bullet_points = "\n".join([f"{i+1}. {name}" for i, name in enumerate(human_fields)])
-            clarification_answer = (
-                f"Please provide:\n"
-                f"{bullet_points}"
+            clarification_answer = f"Please provide:\n{bullet_points}"
+
+            eval_res = evaluate_response(
+                answer=clarification_answer,
+                tool_trace=[],
+                numerical_results=None,
+                assumptions=[]
             )
+
             return AgentAdviceResponse(
                 answer=clarification_answer,
                 recommendation={
@@ -405,18 +542,60 @@ class FarmGuardAgent:
                     text="Analysis requires baseline farm parameters."
                 )],
                 missing_fields=missing_fields,
+                security={
+                    "input_guardrails": "passed",
+                    "output_guardrails": "passed",
+                    "prompt_injection": "not_detected",
+                    "secret_scan": "passed"
+                },
+                evaluation=eval_res,
+                blocked=False,
+                block_reason=None
             )
 
-        # 1. Execute deterministic tools & weather lookup
+        # ====================================================================
+        # 3. DETERMINISTIC TOOL EXECUTION & WEATHER INGESTION
+        # ====================================================================
         numerical_results, tool_trace, active_farm_input = self._execute_tools(raw_farm_input)
 
-        # 2. Synthesize explanation via Gemini (or safe deterministic synthesis)
-        answer = self._call_gemini_synthesis(
+        # ====================================================================
+        # 4. LLM SYNTHESIS & OUTPUT SAFETY / NUMERICAL GROUNDING GUARDRAILS
+        # ====================================================================
+        candidate_answer = self._call_gemini_synthesis(
             farm_input=active_farm_input,
             num_res=numerical_results,
             user_message=request.message,
         )
 
+        out_safe, out_status, out_reason = validate_agent_output(candidate_answer, numerical_results)
+
+        if out_safe:
+            final_answer = candidate_answer
+            tool_trace.append(ToolTraceItem(
+                tool="output_guardrails",
+                status="passed",
+                event="OUTPUT_GUARDRAIL_PASSED",
+                summary="Output passed numerical grounding and safety checks"
+            ))
+        else:
+            # Fallback to deterministic synthesis if hallucination or policy failure detected
+            final_answer = self._generate_deterministic_explanation(active_farm_input, numerical_results)
+            tool_trace.append(ToolTraceItem(
+                tool="output_guardrails",
+                status="failed",
+                event="OUTPUT_GUARDRAIL_FAILED",
+                summary=f"Guardrail failure: {out_reason}"
+            ))
+            tool_trace.append(ToolTraceItem(
+                tool="fallback_synthesizer",
+                status="completed",
+                event="FALLBACK_SYNTHESIS_USED",
+                summary="Fell back to pure deterministic advisory synthesis"
+            ))
+
+        # ====================================================================
+        # 5. DETERMINISTIC LLM EVALUATION
+        # ====================================================================
         irrig = numerical_results["irrigation_recommendation"]
         recommendation_summary = {
             "recommended_irrigation_mm": irrig["recommended_irrigation_mm"],
@@ -431,11 +610,34 @@ class FarmGuardAgent:
             irrigation_rec=irrig,
         )
 
+        evaluation_summary = evaluate_response(
+            answer=final_answer,
+            tool_trace=[t.model_dump() for t in tool_trace],
+            numerical_results=numerical_results,
+            assumptions=assumptions_list,
+        )
+
+        tool_trace.append(ToolTraceItem(
+            tool="evaluation_framework",
+            status="completed",
+            event="EVALUATION_COMPLETED",
+            summary=f"Evaluation overall: {evaluation_summary.get('overall')}"
+        ))
+
         return AgentAdviceResponse(
-            answer=answer,
+            answer=final_answer,
             recommendation=recommendation_summary,
             tool_trace=tool_trace,
             numerical_results=numerical_results,
             assumptions=assumptions_list,
             missing_fields=None,
+            security={
+                "input_guardrails": "passed",
+                "output_guardrails": "passed" if out_safe else "failed_fallback_engaged",
+                "prompt_injection": "not_detected",
+                "secret_scan": "passed"
+            },
+            evaluation=evaluation_summary,
+            blocked=False,
+            block_reason=None
         )

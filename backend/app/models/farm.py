@@ -191,9 +191,10 @@ class FarmAnalysisResponse(BaseModel):
 
 
 class ToolTraceItem(BaseModel):
-    """Execution metadata for a deterministic tool call."""
+    """Execution metadata for a deterministic tool call or security checkpoint."""
     tool: str
     status: str = "completed"
+    event: Optional[str] = None
     summary: Optional[str] = None
 
 
@@ -211,3 +212,7 @@ class AgentAdviceResponse(BaseModel):
     numerical_results: Optional[Dict[str, Any]] = Field(None, description="Pure tool calculation results")
     assumptions: List[AssumptionItem] = Field(default_factory=list, description="Explicit categorized assumptions and uncertainties")
     missing_fields: Optional[List[str]] = Field(None, description="List of required fields missing from request if any")
+    security: Optional[Dict[str, Any]] = Field(None, description="Security guardrail checkpoint statuses")
+    evaluation: Optional[Dict[str, Any]] = Field(None, description="Deterministic LLM evaluation metrics summary")
+    blocked: Optional[bool] = Field(None, description="True if input was rejected by security guardrails")
+    block_reason: Optional[str] = Field(None, description="Reason code if blocked by security guardrails")
