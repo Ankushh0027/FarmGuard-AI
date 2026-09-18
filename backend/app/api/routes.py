@@ -26,6 +26,25 @@ router = APIRouter()
 agent_service = FarmGuardAgent()
 
 
+@router.get("/", status_code=status.HTTP_200_OK, tags=["System"])
+def root_endpoint():
+    """Root metadata endpoint for FarmGuard AI Backend."""
+    return {
+        "service": "FarmGuard AI Backend",
+        "tagline": "India-specific AI-powered sustainable farming assistant (NextStep Hacks 2026 - Earth Forward)",
+        "version": "0.1.0",
+        "status": "online",
+        "endpoints": {
+            "health": "/health",
+            "ready": "/ready",
+            "metrics": "/metrics",
+            "docs": "/docs",
+            "farm_analysis": "/api/v1/farm/analyze",
+            "agent_advice": "/api/v1/agent/advice"
+        }
+    }
+
+
 @router.get("/health", status_code=status.HTTP_200_OK, tags=["System"])
 def health_check():
     """Liveness probe. Fast and non-blocking; never calls external LLMs or APIs."""

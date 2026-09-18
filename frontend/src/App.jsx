@@ -21,21 +21,21 @@ export default function App() {
       case 'overview':
         return <OverviewPage setActivePage={setActivePage} />;
       case 'analysis':
-        return <FarmAnalysisPage />;
+        return <FarmAnalysisPage setActivePage={setActivePage} />;
       case 'advisor':
-        return <AIAdvisorPage />;
+        return <AIAdvisorPage setActivePage={setActivePage} />;
       case 'weather':
-        return <WeatherPage />;
+        return <WeatherPage setActivePage={setActivePage} />;
       case 'activity':
-        return <ActivityPage />;
+        return <ActivityPage setActivePage={setActivePage} />;
       case 'evaluation':
-        return <EvaluationPage />;
+        return <EvaluationPage setActivePage={setActivePage} />;
       case 'security':
-        return <SecurityCenterPage />;
+        return <SecurityCenterPage setActivePage={setActivePage} />;
       case 'architecture':
-        return <ArchitecturePage />;
+        return <ArchitecturePage setActivePage={setActivePage} />;
       case 'about':
-        return <AboutPage />;
+        return <AboutPage setActivePage={setActivePage} />;
       default:
         return <OverviewPage setActivePage={setActivePage} />;
     }

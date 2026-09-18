@@ -3,7 +3,6 @@ import {
   Bot,
   User,
   Send,
-  Sparkles,
   MapPin,
   Sprout,
   Droplets,
@@ -12,29 +11,27 @@ import {
   ChevronDown,
   ChevronUp,
   Cpu,
-  AlertTriangle,
   Info,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import { getAgentAdvice } from '../services/api';
 import Badge from '../components/Badge';
 
 export default function AIAdvisorPage() {
-  const { farm, setFarm, addActivity } = useFarm();
+  const { farm, hasFarmProfile, addActivity } = useFarm();
 
   const [messages, setMessages] = useState([
     {
       id: 'welcome-1',
       sender: 'assistant',
-      text: `Hello! I am **FarmGuard AI**, your India-specific sustainable farming assistant.
+      text: `Hello! I am **FarmGuard AI**, an agricultural decision assistant powered by deterministic FAO-56 crop calculation tools and multi-tier security guardrails.
 
-I orchestrate live weather lookups and deterministic FAO-56 crop calculation tools before synthesizing advice. Ask me about irrigation timing, crop water requirements, or residue management!`,
+Ask me about irrigation scheduling, weather forecast interpretations, or crop residue mulching!`,
       recommendation: null,
-      numerical_results: null,
       tool_trace: [],
-      security: { guardrails: 'active' },
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     }
   ]);
@@ -45,10 +42,10 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
   const messagesEndRef = useRef(null);
 
   const suggestedPrompts = [
-    'Should I irrigate my field today?',
+    hasFarmProfile ? `Should I irrigate my ${farm.crop} field today?` : 'Should I irrigate my field today?',
     'How much water does my crop need in this weather?',
     'Rain is expected tomorrow. What should I do?',
-    'Why is my crop not growing well?',
+    'What are the best residue practices to avoid stubble burning?',
   ];
 
   const scrollToBottom = () => {
@@ -82,7 +79,7 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
     try {
       const payload = {
         message: text,
-        farm: {
+        farm: hasFarmProfile ? {
           crop: farm.crop,
           area_acres: farm.area_acres,
           soil_type: farm.soil_type,
@@ -91,7 +88,7 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
           rainfall_probability: farm.rainfall_probability,
           forecast_rainfall_mm: farm.forecast_rainfall_mm,
           soil_moisture_percent: farm.soil_moisture_percent,
-        }
+        } : null
       };
 
       const response = await getAgentAdvice(payload);
@@ -112,8 +109,8 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
 
       addActivity({
         type: 'ADVISOR',
-        title: `AI Consultation: "${text.slice(0, 35)}..."`,
-        location: farm.location,
+        title: `Advisor: "${text.slice(0, 32)}..."`,
+        location: farm.location || 'General Query',
         recommended_mm: response.numerical_results?.irrigation_recommendation?.recommended_irrigation_mm ?? null,
         water_saved_l: response.numerical_results?.water_conservation?.estimated_water_saved_liters ?? null,
         status: response.blocked ? 'blocked' : 'success',
@@ -125,7 +122,7 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
         {
           id: `error-${Date.now()}`,
           sender: 'assistant',
-          text: `⚠️ **Advisory Notice:** ${err.message || 'Unable to complete advisory request.'}`,
+          text: `⚠️ **Advisory Notice:** ${err.message || 'Unable to connect to advisory service.'}`,
           isError: true,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }
@@ -136,11 +133,11 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
   };
 
   return (
-    <div className="fade-in" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: '24px', height: 'calc(100vh - 140px)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '20px', height: 'calc(100vh - 120px)' }}>
       {/* Left Column: Chat Conversation Container */}
       <div className="card" style={{ display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
-        {/* Chat Messages Viewport */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Chat Messages */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {messages.map((msg) => {
             const isUser = msg.sender === 'user';
             const isTraceExpanded = !!expandedTraces[msg.id];
@@ -150,64 +147,63 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
                 key={msg.id}
                 style={{
                   display: 'flex',
-                  gap: '14px',
+                  gap: '12px',
                   alignSelf: isUser ? 'flex-end' : 'flex-start',
-                  maxWidth: isUser ? '80%' : '90%',
+                  maxWidth: isUser ? '80%' : '88%',
                   flexDirection: isUser ? 'row-reverse' : 'row',
                 }}
               >
                 {/* Avatar */}
                 <div style={{
-                  width: 36,
-                  height: 36,
+                  width: 32,
+                  height: 32,
                   borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
-                  background: isUser ? 'var(--bg-surface-elevated)' : 'linear-gradient(135deg, var(--primary-600), var(--primary-400))',
+                  background: isUser ? 'var(--bg-surface-elevated)' : 'var(--color-brand-dark)',
                   color: '#fff',
-                  boxShadow: isUser ? 'none' : '0 0 12px var(--primary-glow)',
                 }}>
-                  {isUser ? <User size={18} /> : <Bot size={18} />}
+                  {isUser ? <User size={16} /> : <Bot size={16} />}
                 </div>
 
-                {/* Message Body */}
+                {/* Message Box */}
                 <div style={{
-                  background: isUser ? 'linear-gradient(135deg, var(--primary-900), var(--primary-800))' : 'var(--bg-surface)',
-                  border: isUser ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)',
-                  padding: '16px 20px',
-                  color: 'var(--text-main)',
+                  background: isUser ? '#14352a' : 'var(--bg-surface-elevated)',
+                  border: isUser ? '1px solid var(--color-brand-border)' : '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '14px 16px',
+                  color: 'var(--text-primary)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '12px',
+                  gap: '10px',
                 }}>
                   {/* Text Content */}
-                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.92rem' }}>
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '0.88rem' }}>
                     {msg.text}
                   </div>
 
                   {/* Recommendation Highlight Pill */}
                   {msg.recommendation && (
                     <div style={{
-                      padding: '12px 14px',
-                      background: 'rgba(16, 185, 129, 0.08)',
-                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                      padding: '10px 12px',
+                      background: 'var(--color-brand-muted)',
+                      border: '1px solid var(--color-brand-border)',
                       borderRadius: 'var(--radius-md)',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '4px',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--primary-300)' }}>
-                          Tactical Action
+                        <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--color-brand-light)' }}>
+                          Recommended Action
                         </span>
                         <Badge variant={msg.recommendation.recommended_irrigation_mm === 0 ? 'info' : 'success'}>
                           {msg.recommendation.status || 'Active'}
                         </Badge>
                       </div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>
+                      <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                         {msg.recommendation.action}
                       </div>
                     </div>
@@ -215,47 +211,44 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
 
                   {/* Expandable "How FarmGuard Reasoned" Trace */}
                   {msg.tool_trace && msg.tool_trace.length > 0 && (
-                    <div style={{
-                      borderTop: '1px solid var(--border-subtle)',
-                      paddingTop: '8px',
-                    }}>
+                    <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '6px' }}>
                       <button
                         onClick={() => toggleTrace(msg.id)}
                         style={{
                           background: 'none',
                           border: 'none',
-                          color: 'var(--primary-400)',
-                          fontSize: '0.78rem',
+                          color: 'var(--color-brand-light)',
+                          fontSize: '0.76rem',
                           fontWeight: 600,
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          padding: '4px 0',
+                          gap: '5px',
+                          padding: '2px 0',
                         }}
                       >
-                        <Cpu size={14} />
-                        <span>How FarmGuard reasoned ({msg.tool_trace.length} verified steps)</span>
-                        {isTraceExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        <Cpu size={13} />
+                        <span>How FarmGuard reasoned ({msg.tool_trace.length} tool checkpoints)</span>
+                        {isTraceExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                       </button>
 
                       {isTraceExpanded && (
                         <div style={{
-                          marginTop: '10px',
-                          padding: '12px',
-                          background: 'var(--bg-card)',
-                          borderRadius: 'var(--radius-md)',
+                          marginTop: '8px',
+                          padding: '10px',
+                          background: 'var(--bg-surface)',
+                          borderRadius: 'var(--radius-sm)',
                           border: '1px solid var(--border-subtle)',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '8px',
-                          fontSize: '0.78rem',
+                          gap: '6px',
+                          fontSize: '0.76rem',
                           fontFamily: 'var(--font-mono)',
                         }}>
                           {msg.tool_trace.map((trace, tIdx) => (
-                            <div key={tIdx} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)' }}>
-                              <span style={{ color: 'var(--primary-400)' }}>✓</span>
-                              <strong style={{ color: 'var(--text-main)' }}>{trace.tool}</strong>: {trace.summary || trace.event || trace.status}
+                            <div key={tIdx} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)' }}>
+                              <span style={{ color: 'var(--color-brand-light)' }}>✓</span>
+                              <strong style={{ color: 'var(--text-primary)' }}>{trace.tool}</strong>: {trace.summary || trace.event || trace.status}
                             </div>
                           ))}
                         </div>
@@ -263,7 +256,7 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
                     </div>
                   )}
 
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', alignSelf: 'flex-end' }}>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', alignSelf: 'flex-end' }}>
                     {msg.timestamp}
                   </div>
                 </div>
@@ -272,30 +265,27 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
           })}
 
           {isLoading && (
-            <div style={{ display: 'flex', gap: '14px', alignSelf: 'flex-start' }}>
+            <div style={{ display: 'flex', gap: '10px', alignSelf: 'flex-start' }}>
               <div style={{
-                width: 36,
-                height: 36,
+                width: 32,
+                height: 32,
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--primary-600), var(--primary-400))',
+                background: 'var(--color-brand-dark)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#fff',
               }}>
-                <RefreshCw size={18} className="pulse-glow" style={{ animation: 'spin 1s linear infinite' }} />
+                <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
               </div>
               <div style={{
-                padding: '14px 18px',
-                background: 'var(--bg-surface)',
-                borderRadius: 'var(--radius-lg)',
+                padding: '10px 14px',
+                background: 'var(--bg-surface-elevated)',
+                borderRadius: 'var(--radius-md)',
                 color: 'var(--text-muted)',
-                fontSize: '0.88rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
+                fontSize: '0.84rem',
               }}>
-                <span>Orchestrating deterministic farming tools & safety guardrails...</span>
+                Executing deterministic tools & safety guardrails...
               </div>
             </div>
           )}
@@ -305,11 +295,11 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
 
         {/* Suggested Prompts Bar */}
         <div style={{
-          padding: '10px 20px',
-          background: 'var(--bg-card)',
+          padding: '8px 16px',
+          background: 'var(--bg-surface)',
           borderTop: '1px solid var(--border-subtle)',
           display: 'flex',
-          gap: '8px',
+          gap: '6px',
           overflowX: 'auto',
         }}>
           {suggestedPrompts.map((prompt, idx) => (
@@ -318,23 +308,14 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
               disabled={isLoading}
               onClick={() => handleSend(prompt)}
               style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
+                background: 'var(--bg-surface-elevated)',
+                border: '1px solid var(--border-default)',
                 borderRadius: 'var(--radius-full)',
-                padding: '6px 12px',
-                fontSize: '0.78rem',
-                color: 'var(--text-muted)',
+                padding: '4px 10px',
+                fontSize: '0.74rem',
+                color: 'var(--text-secondary)',
                 whiteSpace: 'nowrap',
                 cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--primary-500)';
-                e.currentTarget.style.color = 'var(--primary-300)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.color = 'var(--text-muted)';
               }}
             >
               {prompt}
@@ -343,7 +324,7 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
         </div>
 
         {/* Chat Input Bar */}
-        <div className="chat-input-box">
+        <div style={{ padding: '12px 16px', background: 'var(--bg-sidebar)', borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: '8px' }}>
           <input
             type="text"
             className="form-input"
@@ -359,71 +340,73 @@ I orchestrate live weather lookups and deterministic FAO-56 crop calculation too
             onClick={() => handleSend()}
             disabled={isLoading || !inputMessage.trim()}
           >
-            <Send size={16} />
+            <Send size={15} />
             <span>Send</span>
           </button>
         </div>
       </div>
 
       {/* Right Column: Active Farm Context Sidebar */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <div className="card-header" style={{ margin: 0 }}>
           <div>
-            <h3 className="card-title">
-              <MapPin size={18} style={{ color: 'var(--primary-400)' }} />
+            <h3 className="card-title" style={{ fontSize: '0.95rem' }}>
+              <MapPin size={15} style={{ color: 'var(--color-brand)' }} />
               Active Farm Context
             </h3>
             <p className="card-subtitle">Grounding data passed to advisor</p>
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ padding: '12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>Crop & Area</div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', textTransform: 'capitalize' }}>
-              {farm.crop} ({farm.area_acres} Acres)
+        {hasFarmProfile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ padding: '10px', background: 'var(--bg-surface-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.70rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>Crop & Area</div>
+              <div style={{ fontWeight: 700, fontSize: '0.90rem', color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                {farm.crop} ({farm.area_acres} Acres)
+              </div>
+            </div>
+
+            <div style={{ padding: '10px', background: 'var(--bg-surface-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.70rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>Region / Soil</div>
+              <div style={{ fontWeight: 600, fontSize: '0.86rem', color: 'var(--text-primary)' }}>
+                {farm.location} • <span style={{ textTransform: 'capitalize' }}>{farm.soil_type}</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--color-brand-light)', marginTop: '2px' }}>
+                Soil Moisture: {farm.soil_moisture_percent}%
+              </div>
+            </div>
+
+            <div style={{ padding: '10px', background: 'var(--bg-surface-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: '0.70rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>Weather Ingestion</div>
+              <div style={{ fontWeight: 600, fontSize: '0.86rem', color: 'var(--text-primary)' }}>
+                {farm.rainfall_probability}% Rain • {farm.forecast_rainfall_mm || 0} mm
+              </div>
             </div>
           </div>
-
-          <div style={{ padding: '12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>Region / Location</div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>
-              {farm.location}
+        ) : (
+          <div style={{ padding: '16px', background: 'var(--bg-surface-elevated)', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+            <AlertCircle size={24} style={{ color: 'var(--accent-amber)', margin: '0 auto 8px auto' }} />
+            <div style={{ fontWeight: 600, fontSize: '0.84rem', color: 'var(--text-primary)' }}>No Farm Context Yet</div>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
+              Run Farm Analysis first to provide specific field parameters to the advisor.
             </div>
           </div>
+        )}
 
-          <div style={{ padding: '12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>Soil Classification</div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', textTransform: 'capitalize' }}>
-              {farm.soil_type}
-            </div>
-            <div style={{ fontSize: '0.74rem', color: 'var(--primary-400)', marginTop: '2px' }}>
-              Moisture: {farm.soil_moisture_percent}%
-            </div>
-          </div>
-
-          <div style={{ padding: '12px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 600 }}>Weather Ingestion</div>
-            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)' }}>
-              {farm.rainfall_probability}% Rain • {farm.forecast_rainfall_mm || 6.4} mm
-            </div>
-          </div>
-        </div>
-
-        {/* Security & Grounding Note */}
         <div style={{
           marginTop: 'auto',
-          padding: '12px',
-          background: 'rgba(168, 85, 247, 0.08)',
-          border: '1px solid rgba(168, 85, 247, 0.2)',
+          padding: '10px',
+          background: 'var(--accent-purple-muted)',
+          border: '1px solid rgba(168, 85, 247, 0.25)',
           borderRadius: 'var(--radius-md)',
           display: 'flex',
-          gap: '10px',
+          gap: '8px',
           alignItems: 'flex-start',
         }}>
-          <ShieldCheck size={18} style={{ color: '#c084fc', flexShrink: 0, marginTop: '2px' }} />
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            All numerical claims in advisor answers are mathematically grounded against deterministic tool outputs.
+          <ShieldCheck size={16} style={{ color: '#c084fc', flexShrink: 0, marginTop: '2px' }} />
+          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            All numerical recommendations are calculated strictly by the deterministic tool layer.
           </div>
         </div>
       </div>

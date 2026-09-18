@@ -10,143 +10,153 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
-  Leaf
+  Leaf,
+  Layers,
+  HelpCircle
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
+import { SUPPORTED_CROPS } from '../config/agriculturalData';
 import Badge from '../components/Badge';
 
 export default function OverviewPage({ setActivePage }) {
-  const { farm, latestAnalysis, activities } = useFarm();
+  const {
+    farm,
+    hasFarmProfile,
+    latestAnalysis,
+    activities,
+    loadExampleScenario
+  } = useFarm();
 
-  const recommendedMm = latestAnalysis
-    ? latestAnalysis.irrigation_recommendation.recommended_irrigation_mm
-    : 20.7;
-
-  const isPostponed = recommendedMm === 0.0;
+  const selectedCropMeta = SUPPORTED_CROPS.find(c => c.id === farm.crop);
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-      {/* Top Status Cards Grid */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Top Status Cards */}
       <div className="grid-4">
-        {/* Farm Status Card */}
-        <div className="card">
-          <div className="card-header" style={{ marginBottom: '12px' }}>
-            <span className="card-subtitle">FARM PROFILE</span>
-            <Badge variant="success" icon={CheckCircle2}>Active</Badge>
+        {/* Farm Profile Card */}
+        <div className="kpi-card">
+          <div className="kpi-label">
+            <span>FARM PROFILE</span>
+            <Sprout size={14} style={{ color: hasFarmProfile ? 'var(--color-brand)' : 'var(--text-subtle)' }} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.45rem', fontWeight: 800, textTransform: 'capitalize' }}>
-              {farm.crop}
-            </span>
-            <span style={{ color: 'var(--text-subtle)', fontSize: '0.9rem' }}>({farm.area_acres} Acres)</span>
-          </div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            {farm.location} • <span style={{ textTransform: 'capitalize' }}>{farm.soil_type} Soil</span>
-          </div>
+          {hasFarmProfile ? (
+            <>
+              <div className="kpi-value" style={{ textTransform: 'capitalize' }}>
+                {farm.crop}
+              </div>
+              <div className="kpi-subtext">
+                {farm.area_acres} Acres in {farm.location}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="kpi-value" style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>
+                Not Configured
+              </div>
+              <div className="kpi-subtext">
+                Ready for field analysis
+              </div>
+            </>
+          )}
         </div>
 
         {/* Weather Snapshot Card */}
-        <div className="card">
-          <div className="card-header" style={{ marginBottom: '12px' }}>
-            <span className="card-subtitle">WEATHER SNAPSHOT</span>
-            <Badge variant={farm.rainfall_probability > 50 ? 'warning' : 'info'}>
-              {farm.rainfall_probability}% Rain Chance
-            </Badge>
+        <div className="kpi-card">
+          <div className="kpi-label">
+            <span>WEATHER SNAPSHOT</span>
+            <CloudRain size={14} style={{ color: 'var(--accent-sky)' }} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.45rem', fontWeight: 800 }}>
-              {farm.forecast_rainfall_mm || 6.4} mm
-            </span>
-            <span style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>Forecast Rain</span>
+          <div className="kpi-value" style={{ color: 'var(--accent-sky)' }}>
+            {farm.location || 'Uttar Pradesh'}
           </div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Soil Moisture: {farm.soil_moisture_percent}% (Monitored)
+          <div className="kpi-subtext">
+            {farm.rainfall_probability ? `${farm.rainfall_probability}% rain chance (${farm.forecast_rainfall_mm || 0} mm)` : 'Open-Meteo Regional Weather'}
           </div>
         </div>
 
-        {/* Irrigation Status Card */}
-        <div className="card">
-          <div className="card-header" style={{ marginBottom: '12px' }}>
-            <span className="card-subtitle">IRRIGATION STATUS</span>
-            <Badge variant={isPostponed ? 'info' : 'success'}>
-              {isPostponed ? 'Postponed' : 'Optimized'}
-            </Badge>
+        {/* Latest Irrigation Status Card */}
+        <div className="kpi-card">
+          <div className="kpi-label">
+            <span>IRRIGATION STATUS</span>
+            <Droplets size={14} style={{ color: latestAnalysis ? 'var(--color-brand)' : 'var(--text-subtle)' }} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.45rem', fontWeight: 800, color: 'var(--primary-400)' }}>
-              {recommendedMm} mm
-            </span>
-            <span style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>Recommended</span>
-          </div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            {isPostponed ? 'Rain satisfies water deficit' : 'Groundwater deficit addressed'}
-          </div>
+          {latestAnalysis ? (
+            <>
+              <div className="kpi-value" style={{ color: latestAnalysis.irrigation_recommendation.recommended_irrigation_mm === 0 ? 'var(--accent-sky)' : 'var(--color-brand-light)' }}>
+                {latestAnalysis.irrigation_recommendation.recommended_irrigation_mm} mm
+              </div>
+              <div className="kpi-subtext">
+                {latestAnalysis.irrigation_recommendation.status}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="kpi-value" style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}>
+                Pending Analysis
+              </div>
+              <div className="kpi-subtext">
+                Run farm analysis to compute
+              </div>
+            </>
+          )}
         </div>
 
-        {/* AI Advisor Status Card */}
-        <div className="card">
-          <div className="card-header" style={{ marginBottom: '12px' }}>
-            <span className="card-subtitle">AI ADVISOR STATUS</span>
-            <Badge variant="purple" icon={ShieldCheck}>Grounded</Badge>
+        {/* AI Advisor Guardrails Card */}
+        <div className="kpi-card">
+          <div className="kpi-label">
+            <span>AI REASONING</span>
+            <ShieldCheck size={14} style={{ color: '#c084fc' }} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' }}>
-            <span style={{ fontFamily: 'var(--font-heading)', fontSize: '1.45rem', fontWeight: 800, color: '#c084fc' }}>
-              Deterministic
-            </span>
+          <div className="kpi-value" style={{ color: '#c084fc' }}>
+            Zero Hallucination
           </div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Zero LLM hallucination in calculations
+          <div className="kpi-subtext">
+            100% Grounded in deterministic tools
           </div>
         </div>
       </div>
 
-      {/* Main Content Split: Quick Actions & Recent Activity */}
+      {/* Main Grid: Quick Actions & Recent Activity */}
       <div className="grid-2" style={{ alignItems: 'stretch' }}>
-        {/* Quick Actions Panel */}
+        {/* Quick Actions Card */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="card-header">
             <div>
               <h3 className="card-title">
-                <Zap size={18} style={{ color: 'var(--accent-gold)' }} />
+                <Zap size={16} style={{ color: 'var(--accent-amber)' }} />
                 Quick Actions
               </h3>
-              <p className="card-subtitle">Select a task to jump directly into action</p>
+              <p className="card-subtitle">Agricultural tools and decision workflows</p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, justifyContent: 'center' }}>
             <div
               onClick={() => setActivePage('analysis')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '16px 18px',
-                background: 'var(--bg-surface)',
+                padding: '14px 16px',
+                background: 'var(--bg-surface-elevated)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'border-color 0.15s',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--primary-500)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-brand)'}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 'var(--radius-md)', background: 'rgba(16, 185, 129, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary-400)' }}>
-                  <Sprout size={20} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', background: 'var(--color-brand-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-brand-light)' }}>
+                  <Sprout size={18} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>Analyze Farm</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>Compute exact irrigation depth, water saved & carbon reduction</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.90rem' }}>Run Farm Analysis</div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>Calculate exact irrigation requirements and water saved</div>
                 </div>
               </div>
-              <ArrowRight size={16} style={{ color: 'var(--text-subtle)' }} />
+              <ArrowRight size={15} style={{ color: 'var(--text-subtle)' }} />
             </div>
 
             <div
@@ -155,32 +165,26 @@ export default function OverviewPage({ setActivePage }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '16px 18px',
-                background: 'var(--bg-surface)',
+                padding: '14px 16px',
+                background: 'var(--bg-surface-elevated)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'border-color 0.15s',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--accent-purple)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent-purple)'}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 'var(--radius-md)', background: 'rgba(168, 85, 247, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c084fc' }}>
-                  <Bot size={20} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', background: 'var(--accent-purple-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c084fc' }}>
+                  <Bot size={18} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>Ask AI Advisor</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>Natural language farming queries with grounded reasoning traces</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.90rem' }}>Ask AI Advisor</div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>Natural language farming queries with tool traces</div>
                 </div>
               </div>
-              <ArrowRight size={16} style={{ color: 'var(--text-subtle)' }} />
+              <ArrowRight size={15} style={{ color: 'var(--text-subtle)' }} />
             </div>
 
             <div
@@ -189,119 +193,119 @@ export default function OverviewPage({ setActivePage }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '16px 18px',
-                background: 'var(--bg-surface)',
+                padding: '14px 16px',
+                background: 'var(--bg-surface-elevated)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer',
-                transition: 'all 0.2s',
+                transition: 'border-color 0.15s',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--accent-blue)';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-subtle)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent-sky)'}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 'var(--radius-md)', background: 'rgba(56, 189, 248, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-blue)' }}>
-                  <CloudRain size={20} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', background: 'var(--accent-sky-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-sky)' }}>
+                  <CloudRain size={18} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>Check Weather</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>Inspect precipitation forecasts and agricultural action guidance</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.90rem' }}>Regional Weather</div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>Inspect precipitation depth and agricultural rules</div>
                 </div>
               </div>
-              <ArrowRight size={16} style={{ color: 'var(--text-subtle)' }} />
+              <ArrowRight size={15} style={{ color: 'var(--text-subtle)' }} />
             </div>
           </div>
         </div>
 
-        {/* Recent Activity Card */}
+        {/* Recent Session Activity Card */}
         <div className="card">
           <div className="card-header">
             <div>
               <h3 className="card-title">
-                <Clock size={18} style={{ color: 'var(--primary-400)' }} />
+                <Clock size={16} style={{ color: 'var(--color-brand)' }} />
                 Recent Activity
               </h3>
-              <p className="card-subtitle">Latest farm analyses and security events</p>
+              <p className="card-subtitle">Session calculation events and audit traces</p>
             </div>
-            <button className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: '0.78rem' }} onClick={() => setActivePage('activity')}>
-              View All
-            </button>
+            {activities.length > 0 && (
+              <button className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: '0.76rem' }} onClick={() => setActivePage('activity')}>
+                View All
+              </button>
+            )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {activities.slice(0, 3).map((act) => (
-              <div
-                key={act.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '12px 14px',
-                  background: 'var(--bg-surface)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 'var(--radius-sm)',
-                    background: act.status === 'blocked' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+          {activities.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {activities.slice(0, 3).map((act) => (
+                <div
+                  key={act.id}
+                  style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    color: act.status === 'blocked' ? 'var(--status-danger)' : 'var(--primary-400)',
-                  }}>
-                    {act.type === 'SECURITY' ? <ShieldCheck size={16} /> : <Droplets size={16} />}
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    background: 'var(--bg-surface-elevated)',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 'var(--radius-sm)',
+                      background: act.status === 'blocked' ? 'var(--accent-rose-muted)' : 'var(--color-brand-muted)',
+                      color: act.status === 'blocked' ? '#f87171' : 'var(--color-brand-light)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {act.type === 'SECURITY' ? <ShieldCheck size={14} /> : <Droplets size={14} />}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.84rem', color: 'var(--text-primary)' }}>{act.title}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>{act.timestamp}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.86rem', color: 'var(--text-main)' }}>{act.title}</div>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', fontFamily: 'var(--font-mono)' }}>{act.requestId} • {act.timestamp}</div>
-                  </div>
-                </div>
 
-                <Badge variant={act.status === 'blocked' ? 'danger' : (act.status === 'postponed' ? 'info' : 'success')}>
-                  {act.status}
-                </Badge>
-              </div>
-            ))}
-          </div>
+                  <Badge variant={act.status === 'blocked' ? 'danger' : (act.status === 'postponed' ? 'info' : 'success')}>
+                    {act.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-subtle)', fontSize: '0.84rem' }}>
+              <div>No activity in this session yet.</div>
+              <div style={{ marginTop: '4px', fontSize: '0.76rem' }}>Calculations and advisor queries will appear here in real-time.</div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* FarmGuard Intelligence Section */}
-      <div className="card" style={{
-        background: 'linear-gradient(135deg, rgba(6, 78, 59, 0.35), rgba(15, 23, 42, 0.85))',
-        borderColor: 'rgba(16, 185, 129, 0.25)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '18px' }}>
+      {/* Intelligence Architecture Callout */}
+      <div className="card" style={{ background: 'var(--bg-surface-elevated)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
           <div style={{
-            width: 44,
-            height: 44,
+            width: 38,
+            height: 38,
             borderRadius: 'var(--radius-md)',
-            background: 'linear-gradient(135deg, var(--primary-600), var(--primary-400))',
+            background: 'var(--color-brand-dark)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#fff',
-            boxShadow: 'var(--shadow-glow)',
             flexShrink: 0,
           }}>
-            <Leaf size={24} />
+            <Leaf size={20} />
           </div>
           <div>
-            <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.15rem', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
-              How FarmGuard Intelligence Protects Agriculture & Nature
+            <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
+              How FarmGuard Protects Groundwater and Air Quality
             </h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', lineHeight: 1.6, maxWidth: '900px' }}>
-              Unlike generic chatbot applications that approximate agricultural math, FarmGuard decouples weather probability signals from precipitation depth. All water requirements are evaluated using standard <strong style={{ color: 'var(--primary-300)' }}>FAO-56 Penman-Monteith crop coefficients ($K_c \times ET_0$)</strong> through a pure Python calculation layer before passing outputs through multi-tier AI security guardrails.
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', lineHeight: 1.6 }}>
+              FarmGuard decouples probabilistic rain signals from physical precipitation depth. All crop water demands ($ET_c$) are evaluated using standard <strong style={{ color: 'var(--color-brand-light)' }}>FAO-56 Penman-Monteith crop coefficients ($K_c \times ET_0$)</strong> through a deterministic calculation layer before passing results to the AI advisor.
             </p>
           </div>
         </div>
