@@ -2,15 +2,13 @@ import React, { useState } from 'react';
 import {
   Droplets,
   Zap,
-  IndianRupee,
   Leaf,
   Clock,
   ArrowRight,
-  TrendingDown,
   Sparkles,
-  Info,
+  Gauge,
   CheckCircle2,
-  Gauge
+  Timer
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import { PUMP_CAPACITIES } from '../config/agriculturalData';
@@ -24,14 +22,17 @@ export default function SavingsPage({ setActivePage }) {
   const selectedPump = PUMP_CAPACITIES.find(p => p.hp === Number(selectedHp)) || PUMP_CAPACITIES[1];
 
   const analysis = latestAnalysis?.data || null;
+  const rec = analysis?.irrigation_recommendation || analysis?.recommendation || null;
   const waterAnalysis = analysis?.water_analysis || null;
   const envImpact = analysis?.environmental_impact || null;
 
   // Real or dynamically computed values based on latest analysis or representative baseline
   const waterSavedLiters = waterAnalysis?.water_savings_liters ?? 0;
-  const pumpHoursSaved = waterSavedLiters > 0
-    ? Number((waterSavedLiters / selectedPump.dischargeLph).toFixed(1))
-    : (waterAnalysis?.pump_hours_saved ?? 0);
+  const flowLpm = parseFloat(farm.pump_flow_lpm) || (selectedPump.dischargeLph / 60);
+
+  const pumpMinutesSaved = waterSavedLiters > 0 && flowLpm > 0 ? (waterSavedLiters / flowLpm) : 0;
+  const pumpHoursSaved = Number((pumpMinutesSaved / 60).toFixed(1));
+
   const electricitySavedKwh = Number((pumpHoursSaved * selectedPump.kwDraw).toFixed(1));
   const moneySavedInr = Math.round(electricitySavedKwh * customTariff);
   const co2AvoidedKg = envImpact?.co2e_avoided_kg ?? Number((electricitySavedKwh * 0.82).toFixed(1));
@@ -52,20 +53,20 @@ export default function SavingsPage({ setActivePage }) {
                 width: 36,
                 height: 36,
                 borderRadius: 'var(--radius-sm)',
-                background: 'rgba(16, 185, 129, 0.15)',
-                color: 'var(--primary-400)',
+                background: 'var(--color-brand-muted)',
+                color: 'var(--color-brand)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
                 <Zap size={20} />
               </div>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
                 Water & Energy Saved
-              </h3>
+              </h2>
             </div>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-              See how matching irrigation to crop moisture needs reduces groundwater extraction and electricity bills.
+              See how matching irrigation to soil moisture needs reduces tubewell pumping hours and electricity bills.
             </p>
           </div>
 
@@ -86,35 +87,35 @@ export default function SavingsPage({ setActivePage }) {
         <div className="kpi-card">
           <div className="kpi-label">
             <span>Water Saved</span>
-            <Droplets size={14} style={{ color: 'var(--accent-blue)' }} />
+            <Droplets size={14} style={{ color: 'var(--accent-sky)' }} />
           </div>
-          <div className="kpi-value" style={{ color: 'var(--accent-blue)' }}>
+          <div className="kpi-value" style={{ color: 'var(--accent-sky)' }}>
             {waterSavedLiters > 0 ? `${waterSavedLiters.toLocaleString()} L` : '0 L'}
           </div>
           <div className="kpi-subtext">
-            {waterSavedLiters > 0 ? `Saved in current watering` : 'Run calculation to see savings'}
+            {waterSavedLiters > 0 ? `Saved in current watering` : 'Calculate field to see savings'}
           </div>
         </div>
 
         <div className="kpi-card">
           <div className="kpi-label">
-            <span>Tubewell Pump Time Saved</span>
-            <Clock size={14} style={{ color: 'var(--primary-400)' }} />
+            <span>Pump Time Saved</span>
+            <Clock size={14} style={{ color: 'var(--accent-amber)' }} />
           </div>
-          <div className="kpi-value" style={{ color: 'var(--primary-400)' }}>
+          <div className="kpi-value" style={{ color: 'var(--accent-amber)' }}>
             {pumpHoursSaved > 0 ? `${pumpHoursSaved} hrs` : '0 hrs'}
           </div>
           <div className="kpi-subtext">
-            Based on {selectedPump.hp} HP tubewell ({selectedPump.dischargeLph.toLocaleString()} L/hr)
+            Based on {flowLpm.toFixed(0)} L/min flow
           </div>
         </div>
 
         <div className="kpi-card">
           <div className="kpi-label">
             <span>Electricity Saved</span>
-            <Zap size={14} style={{ color: 'var(--accent-gold)' }} />
+            <Zap size={14} style={{ color: 'var(--color-brand)' }} />
           </div>
-          <div className="kpi-value" style={{ color: 'var(--accent-gold)' }}>
+          <div className="kpi-value" style={{ color: 'var(--color-brand-dark)' }}>
             {electricitySavedKwh > 0 ? `${electricitySavedKwh} kWh` : '0 kWh'}
           </div>
           <div className="kpi-subtext">
@@ -124,14 +125,14 @@ export default function SavingsPage({ setActivePage }) {
 
         <div className="kpi-card">
           <div className="kpi-label">
-            <span>CO₂ Emissions Avoided</span>
-            <Leaf size={14} style={{ color: '#a7f3d0' }} />
+            <span>CO₂ Avoided</span>
+            <Leaf size={14} style={{ color: 'var(--color-brand)' }} />
           </div>
-          <div className="kpi-value" style={{ color: '#a7f3d0' }}>
+          <div className="kpi-value" style={{ color: 'var(--color-brand-dark)' }}>
             {co2AvoidedKg > 0 ? `${co2AvoidedKg} kg` : '0 kg'}
           </div>
           <div className="kpi-subtext">
-            From reduced grid pumping & residue care
+            Reduced tubewell power generation
           </div>
         </div>
       </div>
@@ -141,19 +142,36 @@ export default function SavingsPage({ setActivePage }) {
         <div className="card-header">
           <div>
             <h3 className="card-title">
-              <Gauge size={18} style={{ color: 'var(--primary-400)' }} />
+              <Gauge size={18} style={{ color: 'var(--color-brand)' }} />
               Customize Your Pump & Electricity Settings
             </h3>
             <p className="card-subtitle">
-              Adjust your tubewell motor capacity and local tariff to see customized operational savings.
+              Adjust your pump discharge or motor rating and local tariff to see customized operational savings.
             </p>
           </div>
           <Badge variant="success">Interactive</Badge>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', margin: '16px 0' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', margin: '16px 0' }}>
           <div>
-            <label className="form-label">Tubewell Pump Motor (HP)</label>
+            <label className="form-label">Pump Flow Rate (L/min)</label>
+            <input
+              type="number"
+              min="50"
+              max="10000"
+              step="50"
+              className="form-input"
+              placeholder="e.g. 1000 L/min"
+              value={farm.pump_flow_lpm || ''}
+              onChange={(e) => setFarm(prev => ({ ...prev, pump_flow_lpm: e.target.value }))}
+            />
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
+              Used to calculate exact pump running time (hours & minutes)
+            </div>
+          </div>
+
+          <div>
+            <label className="form-label">Or Select Standard Motor (HP)</label>
             <select
               className="form-select"
               value={selectedHp}
@@ -167,9 +185,6 @@ export default function SavingsPage({ setActivePage }) {
                 <option key={p.hp} value={p.hp}>{p.label}</option>
               ))}
             </select>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-              Discharge: {selectedPump.dischargeLph.toLocaleString()} Litres/hour • Power Draw: ~{selectedPump.kwDraw} kW
-            </div>
           </div>
 
           <div>
@@ -190,9 +205,6 @@ export default function SavingsPage({ setActivePage }) {
               />
               <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>₹ / kWh</span>
             </div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-              Typical agricultural subsidized rate in India: ₹4 – ₹7 / kWh
-            </div>
           </div>
         </div>
 
@@ -200,27 +212,27 @@ export default function SavingsPage({ setActivePage }) {
         {waterSavedLiters > 0 && (
           <div style={{
             padding: '16px 20px',
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.8))',
+            background: 'var(--color-brand-muted)',
             borderRadius: 'var(--radius-md)',
-            border: '1px solid rgba(16, 185, 129, 0.2)',
+            border: '1px solid var(--color-brand-border)',
             marginTop: '12px'
           }}>
-            <div style={{ fontWeight: 700, color: 'var(--primary-300)', fontSize: '0.95rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ fontWeight: 700, color: 'var(--color-brand-dark)', fontSize: '0.95rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Sparkles size={16} />
               Full Crop Season Projection (4 Irrigations)
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', fontSize: '0.84rem' }}>
               <div>
                 <span style={{ color: 'var(--text-subtle)' }}>Total Water Saved: </span>
-                <strong style={{ color: 'var(--accent-blue)' }}>{seasonalWaterSaved.toLocaleString()} L</strong>
+                <strong style={{ color: 'var(--accent-sky)' }}>{seasonalWaterSaved.toLocaleString()} L</strong>
               </div>
               <div>
                 <span style={{ color: 'var(--text-subtle)' }}>Total Pump Time Saved: </span>
-                <strong style={{ color: 'var(--primary-300)' }}>{seasonalHoursSaved} hours</strong>
+                <strong style={{ color: 'var(--color-brand-dark)' }}>{seasonalHoursSaved} hours</strong>
               </div>
               <div>
                 <span style={{ color: 'var(--text-subtle)' }}>Total Money Saved: </span>
-                <strong style={{ color: 'var(--accent-gold)' }}>₹{seasonalMoneySaved.toLocaleString()}</strong>
+                <strong style={{ color: 'var(--accent-amber)' }}>₹{seasonalMoneySaved.toLocaleString()}</strong>
               </div>
             </div>
           </div>
@@ -232,7 +244,7 @@ export default function SavingsPage({ setActivePage }) {
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">
-              <CheckCircle2 size={18} style={{ color: 'var(--primary-400)' }} />
+              <CheckCircle2 size={18} style={{ color: 'var(--color-brand)' }} />
               Why Saving Pumping Hours Matters
             </h3>
           </div>
@@ -252,7 +264,7 @@ export default function SavingsPage({ setActivePage }) {
         <div className="card">
           <div className="card-header">
             <h3 className="card-title">
-              <Leaf size={18} style={{ color: '#a7f3d0' }} />
+              <Leaf size={18} style={{ color: 'var(--color-brand)' }} />
               Environmental & Groundwater Health
             </h3>
           </div>

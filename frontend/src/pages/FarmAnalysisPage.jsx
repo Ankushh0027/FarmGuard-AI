@@ -14,14 +14,15 @@ import {
   Clock,
   Gauge,
   HelpCircle,
-  ArrowRight
+  ArrowRight,
+  Calculator,
+  Timer
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import {
   SUPPORTED_CROPS,
   SUPPORTED_SOILS,
   SUPPORTED_REGIONS,
-  PUMP_CAPACITIES,
   DEMO_SCENARIOS
 } from '../config/agriculturalData';
 import { analyzeFarm } from '../services/api';
@@ -44,6 +45,11 @@ export default function FarmAnalysisPage({ setActivePage }) {
   const [weatherSuccess, setWeatherSuccess] = useState(false);
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [showPumpOptions, setShowPumpOptions] = useState(false);
+  const [showFlowHelper, setShowFlowHelper] = useState(false);
+
+  // Flow helper container state
+  const [containerLitres, setContainerLitres] = useState(200);
+  const [fillSeconds, setFillSeconds] = useState(12);
 
   // Handle live weather fetch from Open-Meteo
   const handleFetchWeather = async () => {
@@ -85,7 +91,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
 
     // Validation
     if (!farm.crop) {
-      setError('Please select the crop you are growing (e.g. Wheat, Rice, Maize, Sugarcane).');
+      setError('Please select what you are growing (e.g. Wheat, Rice, Maize, Sugarcane).');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -99,7 +105,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
 
     const moisture = parseFloat(farm.soil_moisture_percent);
     if (isNaN(moisture) || moisture < 0 || moisture > 100) {
-      setError('Please provide a valid soil moisture value between 0% and 100%.');
+      setError('Please provide an approximate soil moisture percentage between 0% and 100%.');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -155,7 +161,6 @@ export default function FarmAnalysisPage({ setActivePage }) {
   };
 
   const selectedCropObj = SUPPORTED_CROPS.find(c => c.id === farm.crop);
-  const selectedPumpObj = PUMP_CAPACITIES.find(p => p.hp === (farm.pump_hp || 5)) || PUMP_CAPACITIES[1];
 
   const analysis = latestAnalysis?.data || null;
   const rec = analysis?.irrigation_recommendation || analysis?.recommendation || null;
@@ -164,19 +169,39 @@ export default function FarmAnalysisPage({ setActivePage }) {
   const envImpact = analysis?.environmental_impact || null;
   const assumptions = analysis?.assumptions || [];
 
-  // Pumping runtime and savings derived dynamically
+  // Exact Deterministic Conversions
   const areaValue = parseFloat(farm.area_acres) || 1.0;
+  const recommendedMm = rec?.recommended_irrigation_mm ?? 0;
+
+  // 1 mm over 1 acre = 4,046.86 Litres
   const waterVolLiters = waterAnalysis?.recommended_irrigation_liters ?? (
-    rec ? Math.round(rec.recommended_irrigation_mm * areaValue * 4046.86) : 0
+    Math.round(recommendedMm * areaValue * 4046.86)
   );
-  const pumpRuntimeHours = Number((waterVolLiters / selectedPumpObj.dischargeLph).toFixed(1));
-  const pumpHoursSaved = waterAnalysis?.pump_hours_saved ?? (
-    waterAnalysis?.water_savings_liters
-      ? Number((waterAnalysis.water_savings_liters / selectedPumpObj.dischargeLph).toFixed(1))
-      : 0
-  );
-  const electricitySavedKwh = Number((pumpHoursSaved * selectedPumpObj.kwDraw).toFixed(1));
-  const moneySavedInr = Math.round(electricitySavedKwh * (farm.electricity_tariff || 6));
+
+  // Pump Running Time (Minutes & Hours derived strictly from pump water flow in L/min)
+  const pumpFlowLpm = parseFloat(farm.pump_flow_lpm);
+  let pumpTimeText = null;
+  let pumpTimeDetail = null;
+
+  if (pumpFlowLpm && pumpFlowLpm > 0 && waterVolLiters > 0) {
+    const totalMinutes = waterVolLiters / pumpFlowLpm;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = Math.round(totalMinutes % 60);
+
+    if (hours > 0 && minutes > 0) {
+      pumpTimeText = `≈ ${hours} hr ${minutes} min`;
+    } else if (hours > 0) {
+      pumpTimeText = `≈ ${hours} hours`;
+    } else {
+      pumpTimeText = `≈ ${minutes} minutes`;
+    }
+    pumpTimeDetail = `At ${pumpFlowLpm.toLocaleString()} L/min pump discharge`;
+  }
+
+  // Calculate container flow test estimation
+  const estimatedHelperFlow = (containerLitres > 0 && fillSeconds > 0)
+    ? Math.round((parseFloat(containerLitres) / parseFloat(fillSeconds)) * 60)
+    : 0;
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -184,11 +209,11 @@ export default function FarmAnalysisPage({ setActivePage }) {
       <div className="card" style={{ padding: '20px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
           <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '2px' }}>
+            <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '2px' }}>
               Check My Water Need
             </h1>
             <p style={{ fontSize: '0.86rem', color: 'var(--text-muted)' }}>
-              Enter your field details to get a simple irrigation recommendation and energy savings estimate.
+              Enter your field details to find how much water your crop needs and how long to run your pump.
             </p>
           </div>
 
@@ -228,13 +253,13 @@ export default function FarmAnalysisPage({ setActivePage }) {
           gap: '10px'
         }}>
           <AlertTriangle size={18} />
-          <span><strong>Please note:</strong> {error}</span>
+          <span><strong>Please check:</strong> {error}</span>
         </div>
       )}
 
       {/* 5-Step Field Input Form */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-        {/* SECTION 1: CROP SELECTION */}
+        {/* STEP 1: CROP SELECTION */}
         <div className="card">
           <div className="card-header">
             <div>
@@ -287,11 +312,11 @@ export default function FarmAnalysisPage({ setActivePage }) {
 
           <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <HelpCircle size={14} />
-            <span>Currently supporting major regional food and cash crops. Additional crop profiles can be configured.</span>
+            <span>Currently supporting major food and cash crops (Wheat, Rice, Maize, Sugarcane).</span>
           </div>
         </div>
 
-        {/* SECTION 2: FULLY DYNAMIC FIELD SIZE */}
+        {/* STEP 2: FULLY DYNAMIC FIELD SIZE */}
         <div className="card">
           <div className="card-header">
             <div>
@@ -299,12 +324,12 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 <MapPin size={18} style={{ color: 'var(--accent-sky)' }} />
                 2. How big is your field?
               </h3>
-              <p className="card-subtitle">Enter the exact area of the field to be irrigated</p>
+              <p className="card-subtitle">Enter any field size (e.g. 0.5, 1.25, 2.5, 5 acres)</p>
             </div>
           </div>
 
           <div style={{ maxWidth: '420px' }}>
-            <label className="form-label">Field Area</label>
+            <label className="form-label">Field Size</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <input
                 type="number"
@@ -331,7 +356,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
               </div>
             </div>
 
-            {/* Optional Quick Shortcuts underneath */}
+            {/* Quick Suggestions underneath */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
               <span style={{ fontSize: '0.76rem', color: 'var(--text-subtle)' }}>Quick select:</span>
               {[0.5, 1.0, 2.0, 5.0, 10.0].map((val) => (
@@ -357,7 +382,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
           </div>
         </div>
 
-        {/* SECTION 3: LOCATION */}
+        {/* STEP 3: LOCATION */}
         <div className="card">
           <div className="card-header">
             <div>
@@ -365,7 +390,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 <MapPin size={18} style={{ color: 'var(--color-brand)' }} />
                 3. Where is your farm?
               </h3>
-              <p className="card-subtitle">Used for regional evapotranspiration ($ET_0$) and weather integration</p>
+              <p className="card-subtitle">Select your state or agricultural zone</p>
             </div>
           </div>
 
@@ -383,7 +408,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
           </div>
         </div>
 
-        {/* SECTION 4: SOIL MOISTURE & TYPE */}
+        {/* STEP 4: SOIL MOISTURE */}
         <div className="card">
           <div className="card-header">
             <div>
@@ -463,8 +488,8 @@ export default function FarmAnalysisPage({ setActivePage }) {
                   style={{ width: '100%', accentColor: 'var(--color-brand)', cursor: 'pointer' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-                  <span>0% (Bone dry)</span>
-                  <span>50% (Normal field capacity)</span>
+                  <span>0% (Dry)</span>
+                  <span>50% (Normal moisture)</span>
                   <span>100% (Saturated)</span>
                 </div>
               </div>
@@ -499,7 +524,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
           </div>
         </div>
 
-        {/* SECTION 5: WEATHER & RAIN */}
+        {/* STEP 5: WEATHER & RAIN */}
         <div className="card">
           <div className="card-header">
             <div>
@@ -567,8 +592,8 @@ export default function FarmAnalysisPage({ setActivePage }) {
           </div>
         </div>
 
-        {/* OPTIONAL: PUMP & ELECTRICITY SETTINGS */}
-        <div className="card" style={{ padding: '14px 20px' }}>
+        {/* OPTIONAL: PUMP WATER FLOW ("How long to run my pump?") */}
+        <div className="card" style={{ padding: '18px 20px' }}>
           <button
             type="button"
             onClick={() => setShowPumpOptions(!showPumpOptions)}
@@ -581,48 +606,125 @@ export default function FarmAnalysisPage({ setActivePage }) {
               border: 'none',
               color: 'var(--text-main)',
               cursor: 'pointer',
-              fontWeight: 600,
-              fontSize: '0.9rem'
+              fontWeight: 700,
+              fontSize: '0.94rem'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Gauge size={16} style={{ color: 'var(--accent-amber)' }} />
-              <span>Want to estimate pump and electricity use? (Optional)</span>
+              <Timer size={18} style={{ color: 'var(--accent-amber)' }} />
+              <span>Want to know how long to run your pump? (Optional)</span>
             </div>
             {showPumpOptions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
 
           {showPumpOptions && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginTop: '14px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
-              <div>
-                <label className="form-label">Pump Capacity</label>
-                <select
-                  className="form-select"
-                  value={farm.pump_hp || 5}
-                  onChange={(e) => setFarm(prev => ({ ...prev, pump_hp: Number(e.target.value) }))}
-                >
-                  {PUMP_CAPACITIES.map(p => (
-                    <option key={p.hp} value={p.hp}>{p.label}</option>
-                  ))}
-                </select>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-                  Standard Indian tubewell flow rate: ~28,000 L/hr (5 HP)
+            <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ maxWidth: '420px' }}>
+                <label className="form-label">
+                  Pump Water Flow (How much water your pump gives)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    min="50"
+                    max="10000"
+                    step="50"
+                    className="form-input"
+                    style={{ fontSize: '1rem', fontWeight: 600 }}
+                    placeholder="e.g. 1000"
+                    value={farm.pump_flow_lpm || ''}
+                    onChange={(e) => setFarm(prev => ({ ...prev, pump_flow_lpm: e.target.value }))}
+                  />
+                  <div style={{
+                    padding: '9px 12px',
+                    background: 'var(--bg-surface-subtle)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontWeight: 600,
+                    color: 'var(--text-main)',
+                    fontSize: '0.85rem',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    Litres / min
+                  </div>
+                </div>
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Check your pump manual or ask your operator. If you don't know it, you can skip this.
                 </div>
               </div>
 
-              <div>
-                <label className="form-label">Electricity Tariff (₹/kWh)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  className="form-input"
-                  value={farm.electricity_tariff || 6}
-                  onChange={(e) => setFarm(prev => ({ ...prev, electricity_tariff: Number(e.target.value) }))}
-                />
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
-                  Used to estimate electricity bill savings
-                </div>
+              {/* Simple Flow Helper: Container Fill Method */}
+              <div style={{ background: 'var(--bg-surface-subtle)', padding: '12px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowFlowHelper(!showFlowHelper)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--color-brand-dark)',
+                    fontWeight: 600,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: 0
+                  }}
+                >
+                  <Calculator size={14} />
+                  <span>Don't know your pump flow? Measure with a drum/container</span>
+                  {showFlowHelper ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </button>
+
+                {showFlowHelper && (
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+                      Fill a known-size container (e.g. 200 L drum) and measure how many seconds it takes to fill:
+                    </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 600 }}>Container Size (Litres)</label>
+                        <input
+                          type="number"
+                          min="10"
+                          max="2000"
+                          className="form-input"
+                          style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                          value={containerLitres}
+                          onChange={(e) => setContainerLitres(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: 600 }}>Fill Time (Seconds)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="300"
+                          className="form-input"
+                          style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                          value={fillSeconds}
+                          onChange={(e) => setFillSeconds(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {estimatedHelperFlow > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', paddingTop: '4px' }}>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-main)' }}>
+                          Estimated flow: <strong>{estimatedHelperFlow.toLocaleString()} L/min</strong>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => setFarm(prev => ({ ...prev, pump_flow_lpm: estimatedHelperFlow }))}
+                          style={{ padding: '4px 10px', fontSize: '0.76rem' }}
+                        >
+                          Use this flow rate
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -671,11 +773,11 @@ export default function FarmAnalysisPage({ setActivePage }) {
             border: '2px solid var(--color-brand)',
             backgroundColor: '#ffffff'
           }}>
-            {/* 1. Decision Header */}
+            {/* 1. Decision Header (Should I Water?) */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '20px' }}>
               <div>
                 <div style={{ fontSize: '0.76rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-                  YOUR WATER PLAN
+                  YOUR FIELD'S WATER PLAN
                 </div>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px', textTransform: 'capitalize' }}>
                   {farm.crop} Field ({farm.area_acres} Acres in {farm.location})
@@ -716,46 +818,74 @@ export default function FarmAnalysisPage({ setActivePage }) {
               </p>
             </div>
 
-            {/* 3. Primary Metrics Grid */}
-            <div className="grid-3" style={{ marginBottom: '20px' }}>
-              {/* Recommended Water */}
+            {/* 3. Practical 4-Card Result Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              {/* Card 1: Water Needed (mm) */}
               <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
-                  💧 Recommended Water
+                  💧 Water Needed
                 </div>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--color-brand-dark)', margin: '4px 0' }}>
-                  {rec.recommended_irrigation_mm} <span style={{ fontSize: '1.1rem', color: 'var(--text-muted)' }}>mm</span>
+                <div style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--color-brand-dark)', margin: '4px 0' }}>
+                  {recommendedMm} <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>mm</span>
                 </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  ≈ <strong style={{ color: 'var(--text-main)' }}>{waterVolLiters.toLocaleString()} Litres</strong> for your {farm.area_acres} acres
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  {recommendedMm > 0
+                    ? `${recommendedMm} mm means this amount of water spread evenly across your field.`
+                    : 'No additional water needed today due to soil moisture or upcoming rain.'}
                 </div>
               </div>
 
-              {/* Water You Save */}
+              {/* Card 2: For Your Field (Litres) */}
               <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
                 <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
-                  💧 Water You Could Save
+                  💧 For Your Field (Total Litres)
                 </div>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--accent-sky)', margin: '4px 0' }}>
-                  {waterAnalysis?.water_savings_liters ? `${waterAnalysis.water_savings_liters.toLocaleString()}` : '0'} <span style={{ fontSize: '1.1rem', color: 'var(--text-muted)' }}>L</span>
+                <div style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--accent-sky)', margin: '4px 0' }}>
+                  ≈ {waterVolLiters.toLocaleString()} <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>Litres</span>
                 </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  1 mm over 1 acre = 4,047 Litres. Calculated dynamically for your {farm.area_acres} acres.
+                </div>
+              </div>
+
+              {/* Card 3: Pump Running Time ("Mera pump kitne ghante chalega?") */}
+              <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
+                  ⏱️ Estimated Pump Time
+                </div>
+                {pumpTimeText ? (
+                  <>
+                    <div style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--accent-amber)', margin: '4px 0' }}>
+                      {pumpTimeText}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      {pumpTimeDetail}.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-muted)', margin: '10px 0 6px' }}>
+                      Not specified
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: 1.4 }}>
+                      Add your pump water flow in L/min above to estimate exact pumping hours.
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Card 4: Water You Save */}
+              <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
+                  💧 Water You Save
+                </div>
+                <div style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--color-brand)', margin: '4px 0' }}>
+                  {waterAnalysis?.water_savings_liters ? `${waterAnalysis.water_savings_liters.toLocaleString()}` : '0'} <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>L</span>
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
                   {waterAnalysis?.water_savings_percent
-                    ? `${waterAnalysis.water_savings_percent}% reduction vs baseline flood watering`
-                    : 'Precision application'}
-                </div>
-              </div>
-
-              {/* Pumping Time & Electricity */}
-              <div style={{ padding: '18px', background: '#ffffff', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-sm)' }}>
-                <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700 }}>
-                  ⚡ Pump & Electricity Impact
-                </div>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: 'var(--accent-amber)', margin: '4px 0' }}>
-                  {pumpRuntimeHours} <span style={{ fontSize: '1.1rem', color: 'var(--text-muted)' }}>hrs</span>
-                </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  Estimated pump runtime ({selectedPumpObj.hp} HP) • <strong style={{ color: 'var(--accent-amber)' }}>{pumpHoursSaved} hrs saved</strong> (₹{moneySavedInr})
+                    ? `${waterAnalysis.water_savings_percent}% reduction compared to unoptimized flood watering.`
+                    : 'Precision application matches crop evapotranspiration.'}
                 </div>
               </div>
             </div>
@@ -773,10 +903,13 @@ export default function FarmAnalysisPage({ setActivePage }) {
               gap: '16px'
             }}>
               <span><strong>Crop:</strong> <span style={{ textTransform: 'capitalize', color: 'var(--text-main)' }}>{farm.crop}</span></span>
-              <span><strong>Area:</strong> <span style={{ color: 'var(--text-main)' }}>{farm.area_acres} Acres</span></span>
+              <span><strong>Field Size:</strong> <span style={{ color: 'var(--text-main)' }}>{farm.area_acres} Acres</span></span>
               <span><strong>Soil Moisture:</strong> <span style={{ color: 'var(--text-main)' }}>{farm.soil_moisture_percent}%</span></span>
               <span><strong>Soil Type:</strong> <span style={{ textTransform: 'capitalize', color: 'var(--text-main)' }}>{farm.soil_type}</span></span>
               <span><strong>Rain Offset:</strong> <span style={{ color: 'var(--accent-sky)' }}>{rec.expected_rain_offset_mm || 0} mm</span></span>
+              {farm.pump_flow_lpm && (
+                <span><strong>Pump Flow:</strong> <span style={{ color: 'var(--accent-amber)' }}>{farm.pump_flow_lpm} L/min</span></span>
+              )}
               <span><strong>Location:</strong> <span style={{ color: 'var(--text-main)' }}>{farm.location}</span></span>
             </div>
 
@@ -797,7 +930,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Leaf size={18} style={{ color: 'var(--color-brand)' }} />
-                  <span><strong>Environmental Benefit:</strong> Prevents excess aquifer extraction and avoids <strong style={{ color: 'var(--color-brand-dark)' }}>{envImpact.co2e_avoided_kg} kg CO₂e</strong> emissions.</span>
+                  <span><strong>Environmental Benefit:</strong> Prevents groundwater depletion and avoids <strong style={{ color: 'var(--color-brand-dark)' }}>{envImpact.co2e_avoided_kg} kg CO₂e</strong> emissions.</span>
                 </div>
                 <button
                   type="button"
@@ -828,7 +961,7 @@ export default function FarmAnalysisPage({ setActivePage }) {
                 }}
               >
                 {showTechnicalDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                <span>{showTechnicalDetails ? 'Hide technical calculation details' : 'See calculation details (ET₀, K_c, soil retention & trace)'}</span>
+                <span>{showTechnicalDetails ? 'Hide calculation details' : 'How was this calculated? (Calculation details & equations)'}</span>
               </button>
 
               {showTechnicalDetails && (
@@ -844,9 +977,13 @@ export default function FarmAnalysisPage({ setActivePage }) {
                   flexDirection: 'column',
                   gap: '8px'
                 }}>
-                  <div><strong>Soil Depletion:</strong> {rec.soil_depletion_percent}% below target capacity</div>
-                  <div><strong>Rain Forecast Status:</strong> {rec.rain_forecast_status}</div>
-                  <div><strong>Assumptions Applied:</strong></div>
+                  <div><strong>Crop Water Deficit:</strong> {rec.soil_depletion_percent}% below target root-zone capacity</div>
+                  <div><strong>Volumetric Formula:</strong> Volume (L) = Irrigation (mm) × Area (acres) × 4,046.86</div>
+                  {pumpFlowLpm && (
+                    <div><strong>Pump Runtime Formula:</strong> Runtime = Volume (L) ÷ Pump Flow ({pumpFlowLpm} L/min)</div>
+                  )}
+                  <div><strong>Rainfall Balance:</strong> {rec.rain_forecast_status}</div>
+                  <div><strong>Agronomic Assumptions Applied:</strong></div>
                   <ul style={{ margin: '0 0 0 16px', padding: 0 }}>
                     {assumptions.map((a, i) => (
                       <li key={i}>{a.text}</li>

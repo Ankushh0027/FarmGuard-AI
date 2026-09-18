@@ -94,7 +94,7 @@ export const PUMP_CAPACITIES = [
  */
 export const DEMO_SCENARIOS = {
   wheat_up: {
-    label: 'Scenario 1: Wheat in UP (Dry soil 35%, 20% rain)',
+    label: 'Scenario 1: Wheat in UP (Dry soil 35%, 20% rain, Pump 1000 L/min)',
     crop: 'wheat',
     area_acres: 2.0,
     soil_type: 'sandy loam',
@@ -103,10 +103,11 @@ export const DEMO_SCENARIOS = {
     rainfall_probability: 20.0,
     forecast_rainfall_mm: 6.4,
     soil_moisture_percent: 35.0,
+    pump_flow_lpm: 1000,
     pump_hp: 5,
   },
   rice_punjab: {
-    label: 'Scenario 2: Rice in Punjab (Rain forecast 22.5 mm)',
+    label: 'Scenario 2: Rice in Punjab (Rain forecast 22.5 mm, Pump 1200 L/min)',
     crop: 'rice',
     area_acres: 5.0,
     soil_type: 'alluvial',
@@ -115,10 +116,11 @@ export const DEMO_SCENARIOS = {
     rainfall_probability: 85.0,
     forecast_rainfall_mm: 22.5,
     soil_moisture_percent: 55.0,
+    pump_flow_lpm: 1200,
     pump_hp: 7.5,
   },
   maize_bihar: {
-    label: 'Scenario 3: Maize in Bihar (Dry 30%, no rain)',
+    label: 'Scenario 3: Maize in Bihar (Dry 30%, no rain, no pump flow entered)',
     crop: 'maize',
     area_acres: 3.0,
     soil_type: 'loamy',
@@ -127,10 +129,11 @@ export const DEMO_SCENARIOS = {
     rainfall_probability: 10.0,
     forecast_rainfall_mm: 0.0,
     soil_moisture_percent: 30.0,
+    pump_flow_lpm: '',
     pump_hp: 5,
   },
   sugarcane_maharashtra: {
-    label: 'Scenario 4: Sugarcane in Maharashtra (Trash blanketing)',
+    label: 'Scenario 4: Sugarcane in Maharashtra (Trash blanketing, no pump flow)',
     crop: 'sugarcane',
     area_acres: 4.0,
     soil_type: 'black',
@@ -139,6 +142,7 @@ export const DEMO_SCENARIOS = {
     rainfall_probability: 15.0,
     forecast_rainfall_mm: 0.0,
     soil_moisture_percent: 45.0,
+    pump_flow_lpm: '',
     pump_hp: 5,
   },
 };

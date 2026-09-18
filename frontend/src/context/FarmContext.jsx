@@ -13,6 +13,7 @@ const EMPTY_FARM = {
   rainfall_probability: 0,
   forecast_rainfall_mm: 0,
   soil_moisture_percent: '',
+  pump_flow_lpm: '',
   pump_hp: 5,
   electricity_tariff: 6,
 };
