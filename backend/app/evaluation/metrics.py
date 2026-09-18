@@ -243,3 +243,55 @@ def calculate_llm_reliability_metrics(
         "malformed_response_rate": round(malformed / total, 4),
         "numerical_grounding_failure_rate": round(grounding_failures / total, 4),
     }
+
+
+def calculate_agent_benchmark_metrics(
+    case_results: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Calculate aggregate behavioral and performance metrics for the agent benchmark suite.
+
+    Metrics:
+    - tool_selection_accuracy: fraction of cases with correct tool set selection
+    - tool_sequence_correctness: fraction of multi-tool cases with valid causal order
+    - grounding_faithfulness: fraction of cases where numbers match tool outputs exactly
+    - semantic_relevance_rate: fraction of cases mentioning expected crop/soil/action terms
+    - trace_integrity_rate: fraction of traces with complete and uncorrupted event sequences
+    - red_team_tool_resistance: fraction of tool-abuse attacks safely mitigated
+    - latency_stats: mean, median, p95 latency in milliseconds
+    """
+    total = len(case_results)
+    if total == 0:
+        return {}
+
+    tool_sel_correct = sum(1 for r in case_results if r.get("tool_selection_correct", False))
+    tool_seq_correct = sum(1 for r in case_results if r.get("sequence_applicable", False) and r.get("tool_sequence_correct", False))
+    seq_applicable = sum(1 for r in case_results if r.get("sequence_applicable", False))
+    
+    grounding_passed = sum(1 for r in case_results if r.get("grounding_applicable", False) and r.get("grounding_faithful", False))
+    grounding_applicable = sum(1 for r in case_results if r.get("grounding_applicable", False))
+
+    semantic_relevant = sum(1 for r in case_results if r.get("semantic_relevant", False))
+    trace_valid = sum(1 for r in case_results if r.get("trace_integrity", False))
+
+    red_team_cases = [r for r in case_results if r.get("is_red_team", False)]
+    red_team_total = len(red_team_cases)
+    red_team_resisted = sum(1 for r in red_team_cases if r.get("red_team_mitigated", False))
+
+    latencies = [r.get("latency_ms", 0.0) for r in case_results if "latency_ms" in r]
+    latencies.sort()
+
+    mean_lat = round(sum(latencies) / len(latencies), 2) if latencies else 0.0
+    p95_idx = int(len(latencies) * 0.95)
+    p95_lat = round(latencies[p95_idx], 2) if latencies else 0.0
+
+    return {
+        "total_cases_evaluated": total,
+        "tool_selection_accuracy": round(tool_sel_correct / total, 4),
+        "tool_sequence_correctness": round(tool_seq_correct / seq_applicable, 4) if seq_applicable > 0 else 1.0,
+        "grounding_faithfulness": round(grounding_passed / grounding_applicable, 4) if grounding_applicable > 0 else 1.0,
+        "semantic_relevance_rate": round(semantic_relevant / total, 4),
+        "trace_integrity_rate": round(trace_valid / total, 4),
+        "red_team_tool_resistance": round(red_team_resisted / red_team_total, 4) if red_team_total > 0 else 1.0,
+        "mean_latency_ms": mean_lat,
+        "p95_latency_ms": p95_lat,
+    }

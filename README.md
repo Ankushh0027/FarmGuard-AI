@@ -122,6 +122,12 @@ cd backend
 python -m app.evaluation.adversarial_evaluator
 ```
 
+### Running the Agent Behavioral & Latency Benchmark
+```bash
+cd backend
+python -m app.evaluation.agent_evaluator
+```
+
 ---
 
 ## 📊 Core Calculation Assumptions

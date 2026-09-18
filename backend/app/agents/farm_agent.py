@@ -333,12 +333,13 @@ class FarmGuardAgent:
             )
 
         # Weather context description
+        loc_str = f" for {farm_input.location}" if farm_input.location else ""
         if farm_input.forecast_rainfall_mm is not None:
-            weather_text = f"- Forecast Precipitation: {farm_input.forecast_rainfall_mm:.1f} mm expected (Source: {weather.get('source', 'Open-Meteo')})"
+            weather_text = f"- Forecast Precipitation{loc_str}: {farm_input.forecast_rainfall_mm:.1f} mm expected (Source: {weather.get('source', 'Open-Meteo')})"
         elif farm_input.rainfall_probability > 0:
-            weather_text = f"- Rain Probability: {farm_input.rainfall_probability * 100:.0f}% chance of rain (precipitation depth unconfirmed)"
+            weather_text = f"- Rain Probability{loc_str}: {farm_input.rainfall_probability * 100:.0f}% chance of rain (precipitation depth unconfirmed)"
         else:
-            weather_text = "- Weather Outlook: No immediate precipitation expected."
+            weather_text = f"- Weather Outlook{loc_str}: No immediate precipitation expected."
 
         practices_list = "\n".join([f"  * {p}" for p in res["recommended_practices"]])
 
