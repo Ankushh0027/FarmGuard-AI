@@ -700,7 +700,11 @@ class FarmGuardAgent:
                 )
 
         # 5. Crop Disease / Symptoms / Yellow Leaves
-        if re.search(r"\b(?:yellow leaves|leaves are turning yellow|leaves are yellow|peeli patti|pattiya peeli|crop is not growing|fasal kharab|fasal sukh rahi|pest|disease|keeda|keede)\b", msg_clean):
+        is_symptom_query = bool(
+            re.search(r"\b(?:yellow leaves|leaves are turning yellow|leaves are yellow|peeli patti|pattiya peeli|peele patte|patte peele|patte yellow|yellow patte|crop is not growing|fasal kharab|fasal sukh rahi|pest|disease|keeda|keede|bimari)\b", msg_clean)
+            or ("yellow" in msg_clean and any(k in msg_clean for k in ["patte", "patti", "leaf", "leaves"]))
+        )
+        if is_symptom_query:
             if is_hinglish:
                 answer = "Pattiyo ka peela hona kai vajah se ho sakta hai, jaise paani ki kami ya zyada hona, nutrient deficiency (jaise nitrogen ki kami), ya koi bimari.\n\nSahi salah ke liye batayein:\n1. Kaun si fasal hai?\n2. Fasal kitne din ki hai (growth stage)?\n3. Peeli pattiyan neeche purani hain ya upar nayi growth me?\n4. Aap kitne din me paani de rahe hain?"
             else:
