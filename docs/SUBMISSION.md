@@ -87,23 +87,50 @@ User (Web / Mobile) ──► React + Vite Frontend
 
 ---
 
-## 🌍 Sustainability Impact
+## ⏳ Pre-Hackathon Foundation vs. Hackathon Period Work
 
-- **Groundwater Conservation**: Reduces over-irrigation by up to 20–30% by accounting for soil moisture deficits and upcoming rain.
-- **Grid Energy & Fuel Reduction**: Every tubewell hour avoided saves ~3.7 kWh of electricity or ~1.8 L of diesel.
-- **Air Quality & Soil Health**: Incentivizes in-situ stubble retention, avoiding ~1,460 kg of $\text{CO}_2\text{e}$ and ~7.5 kg of $\text{PM}_{2.5}$ per tonne of residue.
+In compliance with official Devpost Hackathon rules regarding continuing projects:
+
+### A. Pre-Existing Foundation (Prior to Hackathon)
+- Basic mathematical formulas for agricultural evapotranspiration and irrigation deficit calculation.
+- Initial baseline FastAPI skeleton and standard Pydantic schema templates.
+- Baseline reference agronomic datasets for Northern Indian major crops (ICAR / PAU reference tables).
+
+### B. Developed & Completed During NextStep Hacks 2026
+- **Google Gemini 2.5 Flash Agentic Core**: Multi-turn agricultural decision-support agent with persistent session memory.
+- **5-Layer Defense-in-Depth Guardrail System**: Real-time prompt injection detector, automated regex secret scanner, strict tool authorization whitelist, schema bounds validation, and output grounding validator.
+- **107-Case Adversarial Benchmark Harness**: Automated security and reliability evaluation suite spanning 85 attack vectors and 22 benign controls.
+- **Modern Multi-Page React + Vite SaaS Frontend**: Complete UI suite with Overview, Farm Analysis, AI Advisor with context indicators, Savings Explorer, and Security Center.
+- **Farmer-First Agronomic Translations**: Deterministic mm-to-Litres volume conversion ($1\text{ mm} \times 1\text{ acre} \approx 4,046.86\text{ L}$) and discharge-based pump running hours calculation ($\text{Minutes} = \frac{\text{Litres}}{\text{L/min}}$).
+- **HP-Only Discharge Safety Logic**: Prevents arbitrary flow rate hallucination by enforcing L/min flow inputs and providing practical container-fill testing instructions.
+- **Symptom Triage Workflow**: Structured 4-point diagnostic questionnaire for crop symptoms without text-only overconfident disease claims.
+- **Resilience Fallback Mechanisms**: Deterministic rule-based fallback when external LLM APIs timeout or hallucinate numbers.
+
+---
+
+## 🌍 Earth Forward Track Alignment & Potential Environmental Impact
+
+FarmGuard AI directly addresses the **Earth Forward** theme by tackling unsustainable water extraction, energy waste, and agricultural burning:
+
+1. **Groundwater Conservation**: By calculating precise soil moisture deficits and incorporating rainfall probability, FarmGuard helps prevent routine over-irrigation, offering potential groundwater savings of 20–30% per irrigation cycle.
+2. **Agricultural Energy & Fuel Efficiency**: Reducing unneeded tubewell pumping directly conserves electricity (grid pumps consume ~3.7 kWh/hr) and diesel fuel (~1.8 L/hr), lowering agricultural emissions.
+3. **Residue Management & Clean Air**: Encouraging in-situ stubble retention (mulching, bio-decomposers) over seasonal burning helps reduce $\text{CO}_2\text{e}$ and toxic $\text{PM}_{2.5}$ emissions while restoring soil organic carbon.
+4. **Transparent & Safe Decision Support**: Uses transparent, verifiable mathematics rather than ungrounded AI predictions, ensuring farmers receive actionable, responsible guidance.
+
+*(Note: Environmental impact metrics represent modeled agronomic potentials based on standard ICAR/FAO irrigation parameters; actual on-farm savings vary by soil type, weather, and management practices.)*
 
 ---
 
 ## ⚠️ Limitations & Future Scope
 
 ### Current Limitations
-- AI advice is decision support, not an absolute agronomic authority.
-- Exact pump running time requires an accurate water flow measurement in L/min.
-- Current prototype covers Wheat, Rice, Maize, and Sugarcane.
+- AI advice provides contextual decision support and does not replace local agronomic extension experts or soil laboratory tests.
+- Accurate pump running time requires an accurate water discharge measurement in L/min.
+- Current prototype model focuses on four staple crops: Wheat, Rice, Maize, and Sugarcane.
 
 ### Future Roadmap
-- Localized real-time mandi price feeds via Agmarknet.
-- Direct subsidy guidance for PM-KUSUM (solar pumps) and PMKSY.
-- Multilingual regional voice interface for hands-free field use.
-- Direct integration with Soil Health Card laboratory testing data.
+- Localized real-time mandi market prices via Agmarknet API.
+- Government subsidy navigator for PM-KUSUM (solar pumps) and PMKSY schemes.
+- Multilingual voice input and vernacular speech synthesis for hands-free field use.
+- Direct integration with Government Soil Health Card digital records.
+
