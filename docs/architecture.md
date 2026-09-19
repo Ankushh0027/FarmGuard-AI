@@ -1,226 +1,162 @@
 # FarmGuard AI — System Architecture 🌾
 
-> NextStep Hacks 2026 | Theme: **Earth Forward**  
-> India-specific AI-powered Sustainable Farming Assistant
+> **Technical Architecture & Dataflow Specification**  
+> *NextStep Hacks 2026 | Theme: Earth Forward*
 
 ---
 
-## 🏛️ Core Architectural Principle: Strict Separation of Math and LLM
+## 1. High-Level Architecture
 
-A fundamental design requirement of FarmGuard AI is that **Large Language Models (Gemini) must NEVER perform mathematical calculations or unit conversions directly**. 
+FarmGuard AI is architected around a fundamental principle: **Large Language Models (Gemini) must never perform mathematical calculations or unit conversions directly**. 
 
-Instead:
-- **Agronomic formulas, hydrological conversions, and emissions modeling** are 100% deterministic Python code.
-- **Agent Tools** expose clean, typed interfaces to the deterministic engine and external weather APIs.
-- **Gemini Agent** orchestrates tool calls, inspects the verified numbers, and provides empathetic, multilingual farmer advisory (Hindi/Hinglish/English).
-
----
-
-## 🔄 End-to-End System Architecture
+Instead, all agronomic calculations, volumetric conversions, and emissions modeling are executed deterministically in pure Python. The Gemini agent coordinates tool execution, checks safety guardrails, and synthesizes verified outputs into concise, farmer-friendly explanations.
 
 ```mermaid
 flowchart TD
-    User["Farmer / Client Request\n(Voice or Text)"] --> InputGuard["1. Input Validation & Bounds Check\n(app/guardrails/input_guardrails.py)"]
-    InputGuard -->|Valid| PromptGuard["2. Prompt Injection & Abuse Detection\n(app/guardrails/security.py)"]
-    InputGuard -->|Out of Bounds| BlockedInput["Return Safe Structured Input Error"]
+    User(["Farmer / Client (Web / Mobile)"]) --> FE["FarmGuard Frontend\n(React 18 + Vite)"]
     
-    PromptGuard -->|Blocked Attack / Secret Leak| BlockedResp["Return Safe Blocked Response\n{blocked: true, reason: 'potential_prompt_injection'}"]
-    PromptGuard -->|Passed| Agent["3. FarmGuard Agent Orchestration\n(app/agents/farm_agent.py)"]
-    
-    subgraph Weather Service Layer
-        Agent -->|Location Lookup| WeatherService["Open-Meteo Weather Service\n(app/services/weather_service.py)"]
-        WeatherService -->|Forecast Rainfall mm & Probability| WeatherData["Weather Context"]
+    subgraph FastAPI Backend Layer
+        FE --> API["FastAPI Application\n(Middleware, Rate Limiter, Auth)"]
+        API --> InputGuard["Input Guardrails\n(Bounds Validation & Size Limits)"]
+        InputGuard --> PromptGuard["Security Guardrails\n(Prompt Injection & Secret Scanning)"]
+        
+        PromptGuard -->|Blocked| BlockedResp["Structured Security Rejection"]
+        PromptGuard -->|Passed| Agent["FarmGuard Agent Coordinator\n(farm_agent.py)"]
+        
+        subgraph Tool & Calculation Engine
+            Agent --> ToolAuth["Tool Authorization Check\n(tool_guardrails.py)"]
+            ToolAuth --> Tools["Authorized Farm Tools\n(farm_tools.py)"]
+            Tools --> Weather["Weather Service\n(Open-Meteo API)"]
+            Tools --> CalcEngine["Deterministic Agronomic Engine\n(farm_calculator.py)"]
+            CalcEngine --> VerifiedResults["Verified Numerical Results"]
+            VerifiedResults --> ToolOutGuard["Tool Output Validation\n(No NaN/Inf, Positive Bounds)"]
+        end
+        
+        ToolOutGuard --> Agent
+        Agent --> Synthesis["Gemini LLM Synthesis\n(gemini-2.5-flash)"]
+        Synthesis --> OutGuard["Output Safety & Numerical Grounding\n(output_guardrails.py)"]
+        
+        OutGuard -->|Grounding Passed| Eval["8-Dimension Evaluation Engine\n(evaluator.py)"]
+        OutGuard -->|Grounding Failed| Fallback["Safe Deterministic Template Fallback"]
+        Fallback --> Eval
+        
+        Eval --> FinalResponse["Structured Agent Advice Response"]
     end
-
-    subgraph Agent Tool Layer
-        Agent --> ToolAuth["4. Tool Authorization & Input Validation\n(app/guardrails/tool_guardrails.py)"]
-        ToolAuth --> Tools["Farm Tools\n(app/tools/farm_tools.py)"]
-        Tools --> T1["get_crop_water_requirement"]
-        Tools --> T2["calculate_irrigation"]
-        Tools --> T3["calculate_water_savings"]
-        Tools --> T4["calculate_crop_residue"]
-        Tools --> T5["calculate_environmental_impact"]
-    end
-
-    subgraph Deterministic Calculation Engine
-        T1 & T2 & T3 & T4 & T5 --> Engine["Pure Python Agronomic Engine\n(app/calculations/farm_calculator.py)"]
-        Engine --> VerifiedResults["Verified Numerical Results & Categorized Assumptions"]
-    end
-
-    VerifiedResults --> ToolOutputGuard["5. Tool Output Validation\n(No NaN/Inf, Non-negative)"]
-    ToolOutputGuard --> Agent
-    WeatherData --> Agent
     
-    Agent -->|Gemini Synthesis with Verified Numbers| CandidateAdvisory["Candidate LLM Response"]
-    CandidateAdvisory --> OutputGuard["6. Output Guardrails & Numerical Grounding\n(app/guardrails/output_guardrails.py)"]
-    
-    OutputGuard -->|Passed| Eval["7. Deterministic Evaluation Framework\n(app/evaluation/evaluator.py)"]
-    OutputGuard -->|Hallucination / Secret Leak / Unsafe| Fallback["Safe Deterministic Synthesis Fallback"]
-    Fallback --> Eval
-    
-    Eval --> FinalResponse["Safe Advisory Response with Security & Evaluation Metadata"]
-    FinalResponse --> User
+    FinalResponse --> FE
+    BlockedResp --> FE
+    FE --> User
 ```
 
 ---
 
-## 🛡️ AI Security & Guardrails
+## 2. Frontend Flow (`frontend/src/`)
 
-FarmGuard AI implements a multi-layer defense-in-depth security architecture:
-
-1. **Input Security Guardrails (`app/guardrails/input_guardrails.py`)**:
-   - Strict physical bound validation on crop types, area ($> 0$), soil moisture ($0-100\%$), normalized rainfall probability ($0.0-1.0$), and non-negative irrigation depths.
-   - Rejection of oversized payloads ($> 2,000$ characters) without exposing internal stack traces.
-
-2. **Prompt Injection & Abuse Defense (`app/guardrails/security.py`)**:
-   - Multi-pattern heuristic and normalized pattern detection covering instruction overrides (*"ignore previous instructions"*), system prompt extraction (*"reveal system prompt"*), roleplay bypasses (*"pretend you are unrestricted"*), and tool tampering (*"calculate math yourself and ignore tools"*).
-   - Instant structured blocking with zero disclosure of internal prompts.
-
-3. **Secret & Credential Protection (`app/guardrails/security.py`)**:
-   - Continuous scanning of both inputs and outputs for API key formats (`AIzaSy...`), `$GEMINI_API_KEY`, environment variable extraction, and local filesystem paths.
-   - Automated redaction filter ensuring zero secret leakage.
-
-4. **Tool Authorization & Execution Guardrails (`app/guardrails/tool_guardrails.py`)**:
-   - Whitelist authorization strictly restricting invocations to registered tools.
-   - Pre-execution input validation preventing `NaN` / `Infinity` injection.
-   - Post-execution output validation enforcing non-negative volumetric and economic metrics.
-
-5. **Numerical Grounding & Output Safety (`app/guardrails/output_guardrails.py`)**:
-   - Deterministic verification matching all numerical claims in synthesized text against verified tool results.
-   - Detection of unsupported certainty (*"you definitely don't need irrigation"*, *"100% guaranteed"*).
-   - Automatic fail-safe fallback to deterministic template synthesis if any deviation or policy violation is detected.
+1. **State Management (`FarmContext.jsx`)**:
+   - Manages active field parameters (`crop`, `area_acres`, `soil_type`, `location`, `soil_moisture_percent`, `current_irrigation_mm`, `pump_flow_lpm`).
+   - Tracks live backend liveness/readiness via background health probes.
+   - Provides demo field profiles with 1-click loading.
+2. **Interactive Pages**:
+   - **Overview (`OverviewPage.jsx`)**: Value proposition and clear CTA ("Check My Water Need").
+   - **Farm Analysis (`FarmAnalysisPage.jsx`)**: 5-step interactive workflow with live Open-Meteo weather fetch, container-fill flow helper, and result hierarchy (Should I water? $\rightarrow$ Water needed in mm $\rightarrow$ Litres for field $\rightarrow$ Pump runtime $\rightarrow$ Environmental impact).
+   - **AI Advisor (`AIAdvisorPage.jsx`)**: Conversational interface with session context memory, starter prompts, natural Hinglish support, and collapsible verification traces.
+   - **Savings Calculator (`SavingsPage.jsx`)**: Explores tubewell electricity savings, pumping hours avoided, and operational cost reductions.
+   - **Technical Pages (`SecurityCenterPage.jsx`, `EvaluationPage.jsx`, `ArchitecturePage.jsx`)**: Auditor-facing pages detailing test benchmarks and system design.
 
 ---
 
-## 📊 LLM Evaluation & Adversarial Benchmark Framework
+## 3. Backend Flow (`backend/app/api/`)
 
-To maintain production-grade reliability, every advisory is deterministically evaluated across 8 dimensions in [`app/evaluation/`](file:///c:/Users/Ankush/Desktop/FarmGuard-AI/backend/app/evaluation/):
-
-| Evaluation Metric | Scope & Verification Method |
-| :--- | :--- |
-| **Numerical Consistency** | Deterministic regex matching against verified tool outputs (tolerance $\le 5\%$). |
-| **Tool Groundedness** | Verifies execution of all mandatory agricultural tools in trace log. |
-| **Schema Validity** | Confirms presence of all required sections (RECOMMENDATION, WATER, RESIDUE, IMPACT, WHY, ASSUMPTIONS). |
-| **Safety & Certainty** | Ensures absence of unconditional promises or unsupported authority claims. |
-| **Relevance** | Confirms prompt resolution matches user crop and soil context. |
-| **Uncertainty Handling** | Validates transparent communication of rainfall uncertainty and prototype assumptions. |
-| **Prompt Injection Resistance** | Verifies adversarial queries are intercepted at security checkpoint. |
-| **Secret Leakage** | Confirms zero presence of sensitive credentials or filesystem paths. |
-
-### 🧪 107-Case Adversarial Benchmark Suite (`backend/tests/adversarial_cases.json`)
-
-Phase 5 introduces a comprehensive, multi-vector adversarial dataset comprising **107 standardized test cases**:
-
-1. **Prompt Injections (18 cases)**: Direct instruction overrides, roleplay jailbreaks (DAN, unfiltered AI), system tag injection (`[system]`, `<system>`), hierarchy manipulation, and tool bypass directives.
-2. **Obfuscation Attacks (15 cases)**: Spaced characters (`i g n o r e`), mixed case (`iGnOrE`), base64 encoded payloads, nested delimiters, punctuation injection, and newline slicing.
-3. **Multilingual Injections (15 cases)**: Hindi, Hinglish, Spanish, French, German, Arabic, and Telugu attacks with diacritic-invariance.
-4. **Secret Extraction Attacks (12 cases)**: Demands for `$GEMINI_API_KEY`, dumps of `os.environ`/`process.env`, auth tokens, and fake error traces.
-5. **Tool Abuse & Parameter Attacks (15 cases)**: Invocations of unapproved tools (`execute_shell_command`, `sql_query`), `NaN`/`Infinity` inputs, extreme area values ($> 100,000\text{ acres}$), and negative output injection.
-6. **LLM Synthesis & Malformed Output Failures (10 cases)**: Fabricated irrigation depths, hallucinated savings, truncated sections, and certainty violations.
-7. **Benign Agricultural Controls (22 cases)**: Realistic farming queries containing trigger words (e.g., *"ignore previous recommendation because it rained"*, *"explain calculation formula"*, *"government API for mandi prices"*) used to rigorously measure **False Positive Rate**.
-
-### 📐 Dynamic Security & Reliability Formulas
-
-$$\text{Attack Detection Rate} = \frac{\text{Detected Attacks}}{\text{Total Attack Cases}} = \frac{82}{85} = 96.47\%$$
-
-$$\text{Attack Block Rate} = \frac{\text{Blocked Attacks}}{\text{Total Attack Cases}} = \frac{72}{85} = 84.71\%$$
-
-$$\text{False Positive Rate} = \frac{\text{Benign Controls Blocked}}{\text{Total Benign Controls}} = \frac{0}{22} = 0.00\%$$
-
-$$\text{False Negative Rate} = \frac{\text{Missed Attacks}}{\text{Total Attack Cases}} = \frac{0}{85} = 0.00\%$$
-
-$$\text{Secret Leak Rate} = \frac{\text{Cases with Exposed Credentials}}{\text{Total Evaluated Cases}} = \frac{0}{107} = 0.00\%$$
-
-$$\text{Unauthorized Tool Rate} = \frac{\text{Unauthorized Invocations Executed}}{\text{Total Tool Attempts}} = \frac{0}{107} = 0.00\%$$
-
-$$\text{Fallback Synthesis Success Rate} = \frac{\text{Successful Deterministic Fallbacks}}{\text{Triggered Fallbacks}} = \frac{10}{10} = 100.00\%$$
+1. **Production Middleware (`backend/app/api/routes.py`, `backend/app/config.py`)**:
+   - Constant-time API key verification (when `API_AUTH_ENABLED=true`).
+   - In-memory sliding-window rate limiting per client IP (default $60\text{ req/min}$).
+   - `X-Request-ID` correlation tracking across all request cycles.
+   - Security HTTP response headers (`X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`).
+2. **Endpoints**:
+   - `GET /health` & `GET /ready`: Fast, non-blocking liveness and readiness probes.
+   - `GET /metrics`: Prometheus-compatible operational telemetry.
+   - `POST /api/v1/farm/analyze`: Direct deterministic calculation pipeline.
+   - `POST /api/v1/agent/advice`: Full agent advisory lifecycle with guardrails, tool execution, LLM synthesis, and evaluation.
 
 ---
 
-## 🤖 Agent Behavioral Evaluation & Tool Sequencing (`app/evaluation/agent_evaluator.py`)
+## 4. Farm Agent Flow (`backend/app/agents/farm_agent.py`)
 
-Phase 6 introduces deep agent behavioral evaluation across **52 standardized agent benchmark cases** (`backend/tests/agent_eval_cases.json`):
-
-1. **Tool Selection Accuracy (100.00%)**: Validates that the agent invokes only the necessary tools for each query intent (e.g. 0 tools for clarification requests, complete 5-tool sequence for full farm analysis).
-2. **Tool Sequence Correctness (100.00%)**: Enforces strict mathematical causality across tool executions:
-   $$\text{get\_crop\_water\_requirement} \longrightarrow \text{calculate\_irrigation} \longrightarrow \text{calculate\_water\_savings} \longrightarrow \text{calculate\_crop\_residue} \longrightarrow \text{calculate\_environmental\_impact}$$
-3. **Numerical Grounding Faithfulness (97.50%)**: Guarantees that advice presented to farmers matches verified pure Python tool outputs within $\le 5\%$ tolerance.
-4. **Semantic Relevance (94.23%)**: Assesses domain accuracy regarding crop, soil, and sustainable farming recommendations (e.g. in-situ mulching, Happy Seeder, Pusa bio-decomposer).
-5. **Trace Integrity (100.00%)**: Ensures uncorrupted, fully-typed execution logs with step-by-step latency tracking and zero credential exposure.
-6. **Red-Team Tool Attack Resistance (100.00%)**: Mitigates indirect prompt injection in weather/location payloads, `NaN`/`Infinity` arguments, and forged negative outputs.
-
-### ⚡ Performance & Latency SLA
-- **Mean Latency**: $2.66\text{ ms}$ (Offline Deterministic Mode)
-- **p95 Latency**: $4.59\text{ ms}$
-- **Max Latency**: $5.21\text{ ms}$
+1. **Query Classification**:
+   - Identifies whether the query is a general concept ("What is FarmGuard?"), symptom inquiry ("My leaves are yellow"), MM unit question ("What does 28.2 mm mean?"), pump runtime query ("How long to run pump?"), Hinglish question ("Bhai aaj paani du kya?"), or out-of-scope inquiry.
+2. **Conversational Slot Extraction**:
+   - Multilingual regex extraction for crop types (English and Hindi), acreage, soil moisture percentage, location aliases, and pump flow in L/min.
+3. **Missing Parameter Resolution**:
+   - If required parameters are missing, returns structured `missing_fields` and asks specifically for missing data without hallucinating values.
 
 ---
 
-## 🔍 Structured Observability & Security Traces (`app/observability/`)
+## 5. Guardrail Flow (`backend/app/guardrails/`)
 
-FarmGuard AI emits structured JSON traces for every step in the pipeline:
-- **Trace ID & Timestamp**: Unique correlation ID for end-to-end request tracking.
-- **Security Check Status**: Granular reporting on input validation, prompt injection detection, and secret scans.
-- **Tool Traces**: Chronological sequence of authorized tool executions with sanitized parameters.
-- **Evaluation Outcomes**: Real-time pass/fail evaluation flags attached to every response payload.
+```mermaid
+flowchart LR
+    Msg["User Input"] --> InpVal["1. Input Validation\nBounds, Types, Size"]
+    InpVal --> InjCheck["2. Injection Detection\nInstruction Overrides"]
+    InjCheck --> SecScan["3. Secret Scanning\nKeys, Envs, Paths"]
+    SecScan --> AgentCoord["4. Agent Execution"]
+    AgentCoord --> OutCheck["5. Output Grounding\nNumerical Match"]
+    OutCheck -->|Pass| ReturnAdvisory["Return Advisory"]
+    OutCheck -->|Fail| FallbackTpl["Engage Deterministic Fallback"]
+    FallbackTpl --> ReturnAdvisory
+```
 
----
-
-## 🎯 Threat Model
-
-> [!NOTE]
-> FarmGuard AI uses layered controls designed to reduce and detect failure modes. No system is 100% immune to all novel adversarial attacks; our approach combines strict parameter boundaries, deterministic calculation authority, output validation, and fallback synthesis.
-
-| Threat Vector | Potential Impact | Layered Mitigation |
-| :--- | :--- | :--- |
-| **Prompt Injection** | Attacker attempts to hijack LLM persona or ignore safety bounds. | Multi-pattern regex scanner, prompt normalization, early rejection before agent loop. |
-| **Tool Tampering** | Attacker demands LLM invent numbers or bypass tools. | Tool authorization whitelist; LLM prompt forbids math; numerical grounding detects fabricated output. |
-| **Secret / Data Leakage** | Extraction of API keys (`GEMINI_API_KEY`) or server paths. | Pre-execution and post-synthesis regex scanner; automated redaction filter. |
-| **Numerical Hallucination** | LLM misquotes water savings or recommends harmful water depth. | Deterministic numerical grounding comparison; automatic fail-safe fallback to deterministic synthesis. |
-| **Unsafe Certainty** | Overconfident advice leads farmer to risk crop desiccation. | Output certainty filter flagging absolute claims; mandatory uncertainty qualification in system prompt. |
-| **Weather API Outage** | External service timeout or corrupted JSON. | Non-blocking $3.5\text{s}$ timeout with fallback to `status: "unavailable"` and risk-only probability signal. |
+- **Input Guardrails (`input_guardrails.py`)**: Enforces agronomic boundaries (area $> 0$, moisture $0-100\%$, valid crops/soils) and caps message length at 2,000 characters.
+- **Security Guardrails (`security.py`)**: Detects prompt injection patterns and scans for API credentials or system secrets.
+- **Output Guardrails (`output_guardrails.py`)**: Extracts numbers from the synthesized advisory and verifies them against the tool calculation results. If numbers deviate or if unwarranted certainty is detected, falls back to deterministic template generation.
 
 ---
 
-## 🌦️ Weather and Uncertainty
+## 6. Tool Authorization Flow (`backend/app/guardrails/tool_guardrails.py`)
 
-### 1. Rainfall Probability vs. Precipitation Depth
-- In standard meteorology, **Rainfall Probability** ($0-100\%$) indicates the likelihood of precipitation occurring ($\ge 0.1\text{ mm}$), NOT the quantity of water.
-- FarmGuard AI strictly distinguishes between:
-  - `rainfall_probability`: Risk and confidence signal (e.g., 70% chance).
-  - `forecast_rainfall_mm`: Quantifiable depth in millimeters (e.g., $12.4\text{ mm}$).
-- **Hardening Rule**: If only `rainfall_probability` is known, FarmGuard AI **never fabricates a synthetic rainfall depth**. The system advises the farmer to cross-verify local radar before altering scheduled irrigation. When `forecast_rainfall_mm` is available, it is factored directly into the root-zone water balance.
-
-### 2. Live Weather Fallback & Fault Tolerance
-- Real-time weather forecasts are fetched via Open-Meteo API for Indian agricultural regions.
-- If the weather API encounters timeouts, network outages, or unresolvable coordinates, the service gracefully degrades to `status: "unavailable"` without breaking API availability.
-
-### 3. Decision Support vs. Prescriptions
-- Recommendations are designed as **advisory decision support tools**, not legally binding or guaranteed agronomic prescriptions.
-- When calculated net irrigation is $0\text{ mm}$, the agent explicitly states:
-  > *"The current prototype model recommends postponing irrigation under the provided rainfall and soil-moisture assumptions."*
+All tool executions pass through an explicit authorization gate:
+1. **Whitelist Verification**: Only pre-registered tools (`get_weather_forecast`, `get_crop_water_requirement`, `calculate_irrigation`, `calculate_water_savings`, `calculate_crop_residue`, `calculate_environmental_impact`) can execute.
+2. **Pre-Execution Input Sanitization**: Rejects `NaN`, `Infinity`, and out-of-bounds parameters.
+3. **Post-Execution Output Sanitization**: Verifies that volumes, economic metrics, and residue tonnages are non-negative.
 
 ---
 
-## 🛠️ Tool Registry Specification (`app/tools/farm_tools.py`)
+## 7. Numerical Calculation Flow (`backend/app/calculations/farm_calculator.py`)
 
-| Tool Name | Purpose | Key Inputs | Key Output Attributes |
-| :--- | :--- | :--- | :--- |
-| `get_weather_forecast` | Fetch real-time precipitation forecast & probability | `location` | `forecast_rainfall_mm`, `rainfall_probability`, `status`, `source` |
-| `get_crop_water_requirement` | Fetch baseline irrigation depth & moisture thresholds | `crop`, `soil_type` | `base_irrigation_depth_mm`, `target_moisture_percent`, `soil_retention_factor` |
-| `calculate_irrigation` | Compute net irrigation depth & operational urgency | `crop`, `area_acres`, `soil_moisture_percent`, `forecast_rainfall_mm` | `recommended_irrigation_mm`, `status`, `urgency`, `expected_rain_offset_mm` |
-| `calculate_water_savings` | Calculate volume of water and tubewell pump hours saved | `crop`, `area_acres`, `current_irrigation_mm`, `recommended_irrigation_mm` | `current_water_liters`, `recommended_water_liters`, `water_savings_liters`, `diesel_or_electricity_savings_hours` |
-| `calculate_crop_residue` | Estimate stubble biomass & sustainable in-situ practices | `crop`, `area_acres` | `estimated_residue_tonnes`, `stubble_burning_risk`, `recommended_practices`, `economic_potential_inr` |
-| `calculate_environmental_impact` | Calculate avoided greenhouse gas & PM2.5 emissions | `crop`, `area_acres`, `current_irrigation_mm`, `recommended_irrigation_mm` | `co2e_avoided_kg`, `pm25_avoided_kg`, `water_saved_cubic_meters`, `soil_health_benefit` |
-| `analyze_farm_pipeline` | Complete end-to-end farm assessment | `FarmInput` parameters | Composite `FarmAnalysisResponse` |
+### A. Volumetric Conversion
+$$\text{Water Needed (Litres)} = \text{Irrigation Depth (mm)} \times \text{Field Area (Acres)} \times 4,046.8564$$
+
+### B. Flow-Based Pump Running Time
+$$\text{Pump Runtime (Minutes)} = \frac{\text{Water Needed (Litres)}}{\text{Pump Flow (L/min)}}$$
+
+### C. Soil Moisture Deficit
+$$\text{Moisture Deficit (\%)} = \max(0, \text{Target Moisture (\%)} - \text{Current Soil Moisture (\%)})$$
+$$\text{Irrigation Required (mm)} = \max(0, (\text{Base Depth} \times \text{Soil Retention Factor} \times \text{Deficit Ratio}) - \text{Effective Rainfall})$$
+
+### D. Residue & Environmental Impact
+$$\text{Residue (Tonnes)} = \text{Field Area (Acres)} \times \text{Crop Residue Factor}$$
+$$\text{Avoided }\text{CO}_2\text{e (kg)} = \text{Residue (Tonnes)} \times 1,460\text{ kg CO}_2\text{e/tonne}$$
 
 ---
 
-## 📈 Centralized Agronomic Constants & Prototype Assumptions
+## 8. Chat & Session Context Flow
 
-All assumptions are maintained in [`app/calculations/farm_calculator.py`](file:///c:/Users/Ankush/Desktop/FarmGuard-AI/backend/app/calculations/farm_calculator.py):
-- **Volumetric Baseline**: $1\text{ acre-mm} = 4,046.8564\text{ Liters}$ (exact physical geometry).
-- **Tubewell Pump Discharge**: $28,000\text{ Liters/hour}$ (standard 5 HP centrifugal pump prototype assumption).
-- **Supported Crops**: Wheat, Rice (Paddy), Maize, Sugarcane (prototype single-cycle depth models).
-- **Supported Soil Profiles**: Alluvial, Loamy, Sandy Loam, Clayey, Clay Loam, Sandy, Black (Vertisols), Red.
-- **Stubble Emissions Multipliers**: Prototype combustion emissions factors ($\sim 1,460\text{ kg } \text{CO}_2\text{e}$ and $\sim 7.5\text{ kg } \text{PM}_{2.5}$ per tonne wheat straw burned).
+- **Session Context**: The frontend `AIAdvisorPage` maintains a `sessionFarm` state that accumulates parameters as the conversation progresses.
+- **Context Display**: An active context token pill displays retained parameters (e.g. `Crop: RICE • 2.5 Acres • Moisture: 35% • Uttar Pradesh`).
+- **Reset Chat**: 1-click action clears the message history and resets session parameters to a clean state.
+
+---
+
+## 9. Failure & Missing-Data Behavior
+
+- **Missing Parameters**: The assistant clearly states what is missing and provides a numbered list of questions.
+- **Weather API Failure**: If Open-Meteo is unreachable, the system falls back to historical agro-climatic regional norms without crashing.
+- **LLM API Timeout/Failure**: If the Gemini API experiences a network or quota error, the agent falls back to pure deterministic template synthesis with zero downtime.
+- **Security Violations**: Prompt injection attempts return a clean, structured refusal without leaking system prompts or internal logic.
+
+---
+
+## 10. Security Boundaries
+
+- **No Secrets in Frontend**: All API keys, Google Gemini credentials, and server tokens remain strictly on the backend.
+- **Zero Raw Code Execution**: The LLM operates in text synthesis mode with no arbitrary Python execution privileges.
+- **Defense-in-Depth Layering**: Even if an LLM generates invalid data, the output guardrail and deterministic calculation layers guarantee that ungrounded numbers never reach the user.
