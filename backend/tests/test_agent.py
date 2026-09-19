@@ -248,11 +248,11 @@ def test_api_agent_advice_endpoint_missing_info():
 
 
 # ============================================================================
-# 3. FINAL V1 QUALITY TESTS (10 CORE SCENARIOS)
+# 3. FINAL V1 QUALITY TESTS (12 CORE SCENARIOS)
 # ============================================================================
 
-def test_final_quality_10_scenarios():
-    """Verify all 10 final quality, safety, and farmer-friendliness test scenarios."""
+def test_final_quality_12_scenarios():
+    """Verify all 12 final quality, safety, and farmer-friendliness test scenarios."""
     agent = FarmGuardAgent()
 
     # Test 1: "How much water does my rice crop need?" -> Asks for missing inputs, no made-up numbers

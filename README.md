@@ -111,7 +111,7 @@ FarmGuard AI has been tested and verified across multiple automated benchmarks:
 
 - **Pytest Suite**: **114 passed / 0 failed** across unit, API, integration, and guardrail tests.
 - **12 Targeted Assistant Quality Scenarios**: Verified for missing data handling, MM explanation, pump runtime calculation, HP clarification, disease triage, weather logic, Hinglish interaction, prompt injection defense, and secret protection.
-- **Adversarial Security Suite**: 107 test cases verifying 100% block rate on malicious attacks with 0.0% false positive rate on benign agricultural questions.
+- **Adversarial Security Suite**: 107 test cases verifying 100% safe handling rate across 85 attack vectors and 22 benign controls with 0.0% false positive rate and 0.0% secret leak rate.
 - **Frontend Production Build**: `npm run build` compiles with zero errors or broken imports.
 - **Responsive Layout Verification**: Fully verified at $375 \times 812$, $390 \times 844$, and $1440 \times 900$ viewports.
 - **Dynamic Field Scaling**: Linear volume scaling verified across arbitrary field sizes ($0.5$ to $10.0$ acres).

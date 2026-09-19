@@ -72,10 +72,13 @@ FarmGuard AI implements a multi-tier **Defense-in-Depth** security architecture.
 
 FarmGuard AI includes an automated **107-case Adversarial Security Benchmark** (`backend/app/evaluation/adversarial_evaluator.py`):
 
-- **Adversarial Block Rate**: $100\%$ ($87 / 87$ malicious cases blocked)
-- **False Positive Rate**: $0.0\%$ ($20 / 20$ benign agricultural questions passed)
+- **Total Test Cases**: 107 (85 attack vectors + 22 benign control questions)
+- **Safe Handling Rate**: $100\%$ ($107 / 107$ cases safely handled without violation)
+- **Attack Detection Rate**: $96.47\%$ ($82 / 85$ malicious vectors detected)
+- **Direct Input Block Rate**: $84.71\%$ ($72 / 85$ blocked at input; remaining $10$ LLM output failures safely intercepted by output grounding fallback)
+- **False Positive Rate**: $0.0\%$ ($22 / 22$ benign agricultural questions allowed)
 - **Secret Leakage Rate**: $0.0\%$ ($0$ credentials or internal paths exposed)
-- **Tool Selection Accuracy**: $100\%$
+- **Unauthorized Tool Execution Rate**: $0.0\%$ ($0$ unapproved tool invocations)
 
 ---
 

@@ -81,7 +81,7 @@ User (Web / Mobile) ──► React + Vite Frontend
 
 - **Automated Backend Tests**: **114 passed / 0 failed** in `pytest -v`.
 - **12 Targeted Assistant Quality Scenarios**: Verified for missing data handling, MM explanation, pump runtime calculation, HP clarification, disease triage, weather logic, Hinglish interaction, prompt injection defense, and secret protection.
-- **Adversarial Benchmark (107 cases)**: 100% block rate on malicious vectors with 0.0% false positive rate on benign agricultural questions.
+- **Adversarial Benchmark (107 cases)**: 100% safe handling rate across 85 attack vectors and 22 benign controls with 0.0% false positive rate and 0.0% secret leak rate.
 - **Frontend Production Build**: `npm run build` compiles with zero errors in $< 2$ seconds.
 - **Responsive Viewport Verification**: Fully verified at $375 \times 812$, $390 \times 844$, and $1440 \times 900$.
 
