@@ -16,7 +16,8 @@ import {
   HelpCircle,
   ArrowRight,
   Calculator,
-  Timer
+  Timer,
+  Info
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import {
@@ -768,6 +769,16 @@ export default function FarmAnalysisPage({ setActivePage }) {
       {/* RESULTS SCREEN: YOUR FARM'S WATER PLAN */}
       {analysis && rec && (
         <div id="water-plan-results" className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
+          {analysis.is_client_fallback && (
+            <div className="offline-notice-banner">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Info size={16} />
+                <span><strong>Demo Simulation Engine:</strong> Live backend offline. Results computed locally using deterministic FAO-56 agricultural constants.</span>
+              </div>
+              <span className="simulation-pill">Client Fallback</span>
+            </div>
+          )}
+
           <div className="card" style={{
             padding: '28px',
             border: '2px solid var(--color-brand)',

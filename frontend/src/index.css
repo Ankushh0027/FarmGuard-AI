@@ -4,27 +4,43 @@
    ============================================================================== */
 
 :root {
-  /* Surfaces */
-  --bg-app: #f8fafc;
+  /* Surfaces — Warm Off-White Agricultural SaaS Palette */
+  --bg-app: #f9fbf9;
   --bg-sidebar: #ffffff;
   --bg-surface: #ffffff;
   --bg-surface-elevated: #ffffff;
-  --bg-surface-subtle: #f1f5f9;
+  --bg-surface-subtle: #f1f5f2;
 
-  /* Natural Agricultural Green Palette */
-  --color-brand: #15803d;
-  --color-brand-dark: #166534;
-  --color-brand-light: #22c55e;
-  --color-brand-muted: #f0fdf4;
-  --color-brand-border: #bbf7d0;
+  /* Natural Agricultural Forest Green Palette */
+  --color-brand: #1b6334;
+  --color-brand-dark: #144e28;
+  --color-brand-light: #2e8b57;
+  --color-brand-muted: #edf7ed;
+  --color-brand-border: #c8e6c9;
 
-  /* Accents */
+  /* Standard Primary Scale (Mapped for backward compatibility) */
+  --primary-50: #f0fdf4;
+  --primary-100: #dcfce7;
+  --primary-200: #bbf7d0;
+  --primary-300: #15803d; /* High-contrast readable emerald for text on light */
+  --primary-400: #166534; /* Rich deep forest green for icons & borders */
+  --primary-500: #1b6334;
+  --primary-600: #144e28;
+  --primary-700: #0f3d1f;
+  --primary-subtle: #edf7ed;
+  --primary-border: #c8e6c9;
+
+  /* Restrained Accents */
   --accent-amber: #d97706;
   --accent-amber-muted: #fffbeb;
   --accent-sky: #0284c7;
   --accent-sky-muted: #f0f9ff;
   --accent-blue: #0369a1;
   --accent-gold: #b45309;
+  --accent-lime: #4d7c0f;
+  --accent-lime-muted: #f7fee7;
+  --accent-purple: #7e22ce;
+  --accent-purple-muted: #faf5ff;
 
   /* High-Contrast Readable Text */
   --text-main: #0f172a;
@@ -38,11 +54,11 @@
   --border-subtle: #e2e8f0;
   --border-default: #cbd5e1;
   --border-strong: #94a3b8;
-  --border-focus: #15803d;
+  --border-focus: #1b6334;
   --border-card: #e2e8f0;
 
   /* Status Colors */
-  --status-success: #15803d;
+  --status-success: #1b6334;
   --status-warning: #b45309;
   --status-danger: #b91c1c;
   --status-info: #0369a1;
@@ -61,6 +77,7 @@
   --radius-full: 9999px;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 12px rgba(27, 99, 52, 0.2);
 }
 
 /* Global Reset */
@@ -507,6 +524,92 @@ html, body {
   border: 1px solid #fecaca;
 }
 
+.badge-purple {
+  background-color: var(--accent-purple-muted);
+  color: var(--accent-purple);
+  border: 1px solid #e9d5ff;
+}
+
+.badge-lime {
+  background-color: var(--accent-lime-muted);
+  color: var(--accent-lime);
+  border: 1px solid #d9f99d;
+}
+
+.badge-secondary {
+  background-color: var(--bg-surface-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+/* Offline / Simulation Indicators */
+.simulation-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background-color: #fefce8;
+  border: 1px solid #fef08a;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #854d0e;
+}
+
+.offline-notice-banner {
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border: 1px solid var(--color-brand-border);
+  border-radius: var(--radius-md);
+  color: var(--color-brand-dark);
+  font-size: 0.82rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Accessible Table Styles */
+.data-table-container {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.86rem;
+}
+
+.data-table th {
+  padding: 10px 14px;
+  background-color: var(--bg-surface-subtle);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.data-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-main);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tr:hover td {
+  background-color: #fbfdfb;
+}
+
 /* Animations */
 .spin {
   animation: spin 1s linear infinite;
@@ -525,3 +628,4 @@ html, body {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+

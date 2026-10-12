@@ -66,6 +66,9 @@ export function FarmProvider({ children }) {
     }
   };
 
+  const isLiveBackend = systemHealth.status === 'ok' || systemHealth.status === 'healthy';
+  const isDemoMode = !isLiveBackend;
+
   return (
     <FarmContext.Provider value={{
       farm,
@@ -75,6 +78,8 @@ export function FarmProvider({ children }) {
       latestAnalysis,
       setLatestAnalysis,
       systemHealth,
+      isLiveBackend,
+      isDemoMode,
       activities,
       addActivity,
       loadExampleScenario,

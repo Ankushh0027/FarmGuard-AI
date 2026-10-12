@@ -3,7 +3,7 @@ import { Menu, MapPin, Droplets, ShieldCheck, Zap } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 
 export default function Header({ activePage, toggleSidebar }) {
-  const { farm, hasFarmProfile, systemHealth } = useFarm();
+  const { farm, hasFarmProfile, systemHealth, isLiveBackend } = useFarm();
 
   const titles = {
     overview: { title: 'Home', subtitle: 'Simple water decisions for your crop and field' },
@@ -49,21 +49,28 @@ export default function Header({ activePage, toggleSidebar }) {
           </div>
         )}
 
+        {/* Simulation / Demo Pill */}
+        {!isLiveBackend && (
+          <div className="simulation-pill" title="Live backend offline. Running with client-side deterministic agronomic models.">
+            <span>⚡ Demo Simulation</span>
+          </div>
+        )}
+
         {/* Security Indicator */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: '6px',
           padding: '5px 10px',
-          background: 'rgba(56, 189, 248, 0.08)',
-          border: '1px solid rgba(56, 189, 248, 0.2)',
+          background: 'rgba(2, 132, 199, 0.08)',
+          border: '1px solid rgba(2, 132, 199, 0.2)',
           borderRadius: 'var(--radius-full)',
           fontSize: '0.78rem',
           color: 'var(--accent-blue)',
           fontWeight: 600
         }}>
           <ShieldCheck size={14} />
-          <span>Verified Safe AI</span>
+          <span>{isLiveBackend ? 'Verified Safe AI' : 'Deterministic Mode'}</span>
         </div>
       </div>
     </header>

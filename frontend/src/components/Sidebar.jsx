@@ -94,8 +94,8 @@ export default function Sidebar({ activePage, setActivePage, isOpen, setIsOpen }
         <div className="system-status-indicator">
           <div className={`status-dot ${isOnline ? 'online' : 'checking'}`} />
           <div className="status-text">
-            <span className="status-label">{isOnline ? 'System Ready' : 'Connecting...'}</span>
-            <span className="status-version">NextStep 2026 • Earth Forward</span>
+            <span className="status-label">{isOnline ? 'Backend Connected' : 'Demo Mode (Offline Fallback)'}</span>
+            <span className="status-version">WarriorHacks 2.0 Ideathon</span>
           </div>
         </div>
       </div>

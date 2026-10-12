@@ -218,6 +218,7 @@ Ask me about:
         environmental_impact: response.environmental_impact,
         tool_trace: response.tool_trace || [],
         security: response.security,
+        is_client_fallback: Boolean(response.is_client_fallback),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
@@ -337,6 +338,9 @@ Ask me about:
                 <span style={{ fontWeight: 700, color: msg.sender === 'user' ? 'var(--text-main)' : 'var(--color-brand-dark)' }}>
                   {msg.sender === 'user' ? 'You' : 'FarmGuard Assistant'}
                 </span>
+                {msg.is_client_fallback && (
+                  <span className="simulation-pill" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>Offline Fallback</span>
+                )}
                 <span>{msg.timestamp}</span>
               </div>
 
