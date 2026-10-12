@@ -11,7 +11,9 @@ import {
   Cpu,
   Info,
   ChevronRight,
-  Sprout
+  Sprout,
+  Users,
+  AlertTriangle
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 
@@ -26,6 +28,7 @@ export default function Sidebar({ activePage, setActivePage, isOpen, setIsOpen }
         { id: 'analysis', label: 'Check Water Need', icon: Droplets },
         { id: 'advisor', label: 'Ask FarmGuard', icon: MessageSquare },
         { id: 'weather', label: 'Should I Water Today?', icon: CloudRain },
+        { id: 'community', label: 'Community Risk Radar', icon: Users },
         { id: 'savings', label: 'Water & Energy Saved', icon: Zap },
         { id: 'activity', label: 'My Reports', icon: FileText },
       ]

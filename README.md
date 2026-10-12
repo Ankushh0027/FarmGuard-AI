@@ -1,7 +1,7 @@
 # FarmGuard AI 🌾
 
-> **Personal AI Decision-Support for Farmers**  
-> *NextStep Hacks 2026 | Theme: Earth Forward*
+> **Personal AI Decision-Support & Community Risk Intelligence for Smallholder Farmers**  
+> *WarriorHacks 2.0 Ideathon*
 
 ---
 
@@ -36,6 +36,7 @@ It combines:
 - **Conversational Memory**: Retains farm parameters (crop, acreage, soil, moisture, pump flow) across multi-turn queries with 1-click reset.
 - **Disease & Symptom Triage**: Symptom inquiries (e.g. yellow leaves) trigger structured agronomic questions instead of text-only diagnoses.
 - **Stubble Management Alternatives**: Practical, non-burning residue practices (mulching, Super SMS, bio-decomposer) with estimated economic valorization.
+- **Community Crop-Risk Radar**: Anonymized peer farmer reporting network with 5km privacy fuzzing, active outbreak hotspots, official university advisories (PAU/ICAR), and 1-click Krishi Vigyan Kendra (KVK) extension escalation desk.
 - **Interactive Water & Energy Savings**: Transparent modeling of tubewell pumping hours saved, electricity bill reduction, and avoided $\text{CO}_2\text{e}$ emissions.
 - **AI Safety & Defense-in-Depth**: Blocks prompt injections, protects secrets, restricts tool access via whitelist, and validates numerical consistency.
 
@@ -193,10 +194,10 @@ FarmGuard-AI/
 ├── frontend/
 │   ├── src/
 │   │   ├── components/      # UI badges, navigation, layout cards
-│   │   ├── config/          # Agricultural crop data, soils, regions
+│   │   ├── config/          # Agricultural crop data, soils, regions, communityData
 │   │   ├── context/         # FarmContext state & conversational memory
-│   │   ├── pages/           # Overview, Analysis, AI Advisor, Savings, Security, etc.
-│   │   ├── services/        # Backend API client
+│   │   ├── pages/           # Overview, Analysis, AI Advisor, Community, Savings, Security, etc.
+│   │   ├── services/        # Backend API client with offline deterministic fallback
 │   │   └── index.css        # AgriTech light design system tokens
 │   ├── package.json         # Node.js dependencies
 │   └── vite.config.js       # Vite configuration

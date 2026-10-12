@@ -12,6 +12,7 @@ import EvaluationPage from './pages/EvaluationPage';
 import SecurityCenterPage from './pages/SecurityCenterPage';
 import ArchitecturePage from './pages/ArchitecturePage';
 import AboutPage from './pages/AboutPage';
+import CommunityPage from './pages/CommunityPage';
 
 export default function App() {
   const [activePage, setActivePage] = useState('overview');
@@ -37,6 +38,8 @@ export default function App() {
         return <SecurityCenterPage setActivePage={setActivePage} />;
       case 'architecture':
         return <ArchitecturePage setActivePage={setActivePage} />;
+      case 'community':
+        return <CommunityPage setActivePage={setActivePage} />;
       case 'about':
         return <AboutPage setActivePage={setActivePage} />;
       default:

@@ -11,7 +11,9 @@ import {
   Sparkles,
   RotateCcw,
   CloudRain,
-  Sprout
+  Sprout,
+  AlertTriangle,
+  Users
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import { DEMO_SCENARIOS } from '../config/agriculturalData';
@@ -94,6 +96,15 @@ export default function OverviewPage({ setActivePage }) {
 
             <button
               className="btn btn-secondary"
+              onClick={() => setActivePage?.('community')}
+              style={{ padding: '12px 20px', fontSize: '0.95rem', color: 'var(--accent-amber)', borderColor: 'var(--accent-amber)' }}
+            >
+              <AlertTriangle size={16} />
+              Community Risk Radar
+            </button>
+
+            <button
+              className="btn btn-secondary"
               onClick={() => setActivePage?.('architecture')}
               style={{ padding: '12px 20px', fontSize: '0.95rem' }}
             >
@@ -101,6 +112,71 @@ export default function OverviewPage({ setActivePage }) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* 1.5 Community Crop-Risk Live Radar Strip */}
+      <div className="card" style={{
+        padding: '16px 20px',
+        backgroundColor: '#ffffff',
+        border: '1px solid rgba(217, 119, 6, 0.3)',
+        borderLeft: '5px solid var(--accent-amber)',
+        borderRadius: 'var(--radius-md)',
+        boxShadow: 'var(--shadow-sm)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '14px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: 40,
+            height: 40,
+            borderRadius: 'var(--radius-sm)',
+            background: 'rgba(217, 119, 6, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--accent-amber)',
+            flexShrink: 0
+          }}>
+            <AlertTriangle size={22} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--accent-amber)', letterSpacing: '0.04em' }}>
+                LIVE PEER INTELLIGENCE ALERT
+              </span>
+              <span className="badge badge-warning" style={{ fontSize: '0.7rem' }}>
+                5 Active Outbreak Clusters
+              </span>
+            </div>
+            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
+              Yellow Rust (Wheat) & Pink Bollworm (Cotton) alerts corroborated across 50+ neighboring fields
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              Anonymized signals verified by PAU & CICR bulletins. Includes early water-management mitigation guidelines.
+            </div>
+          </div>
+        </div>
+
+        <button
+          className="btn btn-secondary"
+          onClick={() => setActivePage?.('community')}
+          style={{
+            padding: '8px 16px',
+            fontSize: '0.84rem',
+            fontWeight: 700,
+            color: 'var(--accent-amber)',
+            borderColor: 'var(--accent-amber)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          <Users size={14} />
+          Explore Community Radar <ArrowRight size={14} />
+        </button>
       </div>
 
       {/* 2. What FarmGuard Helps You Understand (3 Benefit Blocks) */}

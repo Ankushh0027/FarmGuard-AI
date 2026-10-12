@@ -10,6 +10,7 @@ export default function Header({ activePage, toggleSidebar }) {
     analysis: { title: 'Check Water Need', subtitle: 'Calculate how much water your crop needs and how much you can save' },
     advisor: { title: 'Ask FarmGuard', subtitle: 'Ask questions about your crops, irrigation timing, and weather' },
     weather: { title: 'Should I Water Today?', subtitle: 'Rain forecast and daily watering advice for your field' },
+    community: { title: 'Community Crop-Risk Radar', subtitle: 'Anonymized peer farmer alerts, risk hotspots, and Krishi Vigyan Kendra extension desk' },
     savings: { title: 'Water & Energy Saved', subtitle: 'Groundwater, pumping time, electricity, and cost reductions' },
     activity: { title: 'My Reports', subtitle: 'History of calculations and farm water plans' },
     evaluation: { title: 'AI Evaluation & Benchmarks', subtitle: 'Empirical model accuracy, behavioral evaluation, and trace integrity metrics' },
