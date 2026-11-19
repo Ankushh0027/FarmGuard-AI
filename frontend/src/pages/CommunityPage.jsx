@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   AlertTriangle,
@@ -22,7 +22,8 @@ import {
   Stethoscope,
   X,
   Droplets,
-  Sprout
+  Sprout,
+  RotateCcw
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import {
@@ -30,20 +31,59 @@ import {
   INITIAL_COMMUNITY_REPORTS,
   INITIAL_ESCALATION_TICKETS
 } from '../config/communityData';
+import RegionalRiskMap from '../components/RegionalRiskMap';
+
+const STORAGE_KEY_REPORTS = 'farmguard_community_reports_v1';
+const STORAGE_KEY_TICKETS = 'farmguard_community_tickets_v1';
 
 export default function CommunityPage({ setActivePage }) {
-  const { farm } = useFarm();
+  const { farm, t, language } = useFarm();
 
-  // State
+  // Navigation & filter state
   const [activeTab, setActiveTab] = useState('hotspots'); // 'hotspots' | 'reports' | 'escalations'
   const [selectedCropFilter, setSelectedCropFilter] = useState('all');
   const [selectedSeverityFilter, setSelectedSeverityFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedHotspotId, setSelectedHotspotId] = useState('hs-1');
 
-  // Live collections (optimistic updates for demo)
+  // Persistent live collections (loaded from localStorage with benchmark fallback)
   const [hotspots] = useState(INITIAL_RISK_HOTSPOTS);
-  const [reports, setReports] = useState(INITIAL_COMMUNITY_REPORTS);
-  const [tickets, setTickets] = useState(INITIAL_ESCALATION_TICKETS);
+  const [reports, setReports] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_REPORTS);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Failed to parse saved reports', e);
+    }
+    return INITIAL_COMMUNITY_REPORTS;
+  });
+
+  const [tickets, setTickets] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_TICKETS);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Failed to parse saved tickets', e);
+    }
+    return INITIAL_ESCALATION_TICKETS;
+  });
+
+  // Sync to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_REPORTS, JSON.stringify(reports));
+    } catch (e) {
+      console.warn('Failed to store reports', e);
+    }
+  }, [reports]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_TICKETS, JSON.stringify(tickets));
+    } catch (e) {
+      console.warn('Failed to store tickets', e);
+    }
+  }, [tickets]);
 
   // Modal states
   const [showReportModal, setShowReportModal] = useState(false);
@@ -64,6 +104,23 @@ export default function CommunityPage({ setActivePage }) {
     anonymize: true
   });
 
+  // Reset to benchmark initial data
+  const handleResetToBenchmark = () => {
+    if (window.confirm('Reset community reports and KVK escalation tickets to initial benchmark data?')) {
+      setReports(INITIAL_COMMUNITY_REPORTS);
+      setTickets(INITIAL_ESCALATION_TICKETS);
+      try {
+        localStorage.removeItem(STORAGE_KEY_REPORTS);
+        localStorage.removeItem(STORAGE_KEY_TICKETS);
+      } catch (e) {}
+      setNotificationMsg({
+        type: 'success',
+        text: 'Reset to initial benchmark scenarios successfully!'
+      });
+      setTimeout(() => setNotificationMsg(null), 4000);
+    }
+  };
+
   // Upvote / Verify handler
   const handleToggleUpvote = (reportId) => {
     setReports(prev => prev.map(rep => {
@@ -72,7 +129,7 @@ export default function CommunityPage({ setActivePage }) {
         return {
           ...rep,
           userHasUpvoted: nextUpvoted,
-          confirmedByCount: nextUpvoted ? rep.confirmedByCount + 1 : rep.confirmedByCount - 1
+          confirmedByCount: nextUpvoted ? rep.confirmedByCount + 1 : Math.max(1, rep.confirmedByCount - 1)
         };
       }
       return rep;
@@ -82,7 +139,15 @@ export default function CommunityPage({ setActivePage }) {
   // Submit new report
   const handleCreateReport = (e) => {
     e.preventDefault();
-    if (!newReport.threatTitle.trim() || !newReport.description.trim()) return;
+    if (!newReport.threatTitle.trim() || !newReport.description.trim()) {
+      alert('Please provide a threat title and observation description.');
+      return;
+    }
+    const parsedAcreage = parseFloat(newReport.acreage);
+    if (isNaN(parsedAcreage) || parsedAcreage <= 0) {
+      alert('Please enter a valid acreage greater than 0.');
+      return;
+    }
 
     const randomClusterId = Math.floor(100 + Math.random() * 900);
     const generatedId = `rep-${Date.now().toString().slice(-4)}`;
@@ -92,21 +157,22 @@ export default function CommunityPage({ setActivePage }) {
       id: generatedId,
       farmerHash: newReport.anonymize ? randomHash : 'Farmer (Direct)',
       cluster: `${newReport.region} Cluster #${randomClusterId}`,
-      crop: `${newReport.crop} (${newReport.acreage} ac)`,
+      crop: `${newReport.crop} (${parsedAcreage} ac)`,
       cropCategory: newReport.cropCategory,
-      acreage: Number(newReport.acreage),
+      acreage: parsedAcreage,
       threatType: newReport.threatType,
-      threatTitle: newReport.threatTitle,
-      description: newReport.description,
+      threatTitle: newReport.threatTitle.trim(),
+      description: newReport.description.trim(),
       severity: newReport.severity,
       confirmedByCount: 1,
       userHasUpvoted: true,
       timestamp: 'Just now',
+      isSimulatedSubmission: true,
       aiTriage: {
         matchScore: 86,
-        suspectedCause: `${newReport.threatTitle} Vector Analysis`,
-        confidence: 'Preliminary Signal',
-        recommendedWaterAdvice: 'Regulate irrigation moisture to mitigate microbial spread.'
+        suspectedCause: `${newReport.threatTitle.trim()} (Prototype Vector Match)`,
+        confidence: 'Preliminary Simulation Signal',
+        recommendedWaterAdvice: 'Regulate irrigation interval to moderate leaf canopy humidity.'
       },
       status: 'Community Confirmed',
       escalatedToKvk: false
@@ -116,7 +182,7 @@ export default function CommunityPage({ setActivePage }) {
     setShowReportModal(false);
     setNotificationMsg({
       type: 'success',
-      text: `Field report logged anonymously! AI Triage score: 86/100. Broadcasted to neighboring ${newReport.region} cluster.`
+      text: `Demonstration report logged! (Stored locally; AI Triage: 86/100). Broadcasted to simulated local cluster.`
     });
     setActiveTab('reports');
 
@@ -153,8 +219,9 @@ export default function CommunityPage({ setActivePage }) {
       status: 'In Field Triage',
       slaTimeRemaining: '4 hrs 00 mins',
       dateCreated: 'Just now',
+      isSimulatedTicket: true,
       aiPreliminaryAssessment: selectedReportForEscalate.aiTriage?.suspectedCause 
-        ? `Preliminary AI identification: ${selectedReportForEscalate.aiTriage.suspectedCause}. Farmer reported high spread velocity across cluster.`
+        ? `Prototype AI heuristic: ${selectedReportForEscalate.aiTriage.suspectedCause}. Farmer reported high spread velocity across cluster.`
         : 'Initial high-priority crop anomaly verified by neighboring smallholders.',
       statusSteps: [
         { step: 'Report Logged', done: true, time: 'Just now' },
@@ -171,7 +238,7 @@ export default function CommunityPage({ setActivePage }) {
 
     setNotificationMsg({
       type: 'success',
-      text: `Escalation Ticket #${ticketId} created! Assigned to Regional Krishi Vigyan Kendra agronomist with a 4-hour SLA.`
+      text: `Demonstration Escalation Ticket #${ticketId} created! Assigned to simulated KVK desk with 4-hr SLA.`
     });
     setActiveTab('escalations');
     setTimeout(() => setNotificationMsg(null), 6000);
@@ -237,7 +304,7 @@ export default function CommunityPage({ setActivePage }) {
         boxShadow: 'var(--shadow-sm)'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ maxWidth: '760px' }}>
+          <div style={{ maxWidth: '780px' }}>
             <div style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -254,10 +321,11 @@ export default function CommunityPage({ setActivePage }) {
               letterSpacing: '0.04em'
             }}>
               <AlertTriangle size={13} />
-              WarriorHacks 2.0 • Community Crop-Risk Intelligence
+              {t.communityTitle || 'Community Crop & Pest Alerts'}
             </div>
 
             <h1 style={{
+              fontFamily: 'var(--font-heading)',
               fontSize: '1.9rem',
               fontWeight: 800,
               color: 'var(--text-main)',
@@ -265,22 +333,54 @@ export default function CommunityPage({ setActivePage }) {
               letterSpacing: '-0.02em',
               marginBottom: '10px'
             }}>
-              Early-Warning Risk Radar & Peer Farmer Intelligence
+              {language === 'hindi'
+                ? 'आस-पास के किसानों के अलर्ट और फसल सुरक्षा'
+                : language === 'hinglish'
+                  ? 'Aas-Paas Ke Khet Aur Rog Alerts'
+                  : 'Early-Warning Crop Alerts & Peer Intelligence'}
             </h1>
 
             <p style={{
               fontSize: '0.95rem',
               color: 'var(--text-secondary)',
               lineHeight: 1.55,
-              marginBottom: '0'
+              marginBottom: '10px'
             }}>
-              Pest outbreaks, fungal rust, and groundwater depletion spread across neighboring village clusters long before official bulletins arrive. FarmGuard connects anonymized local farmer signals with verified agronomic advisories and Krishi Vigyan Kendra (KVK) extension desks.
+              {t.communitySubtitle || 'Nearby crop disease reports, weather alerts, and Krishi Vigyan Kendra (KVK) advisories.'}
             </p>
+
+            {/* Prototype Simulation Disclosure */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              background: 'var(--bg-surface-subtle)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.78rem',
+              color: 'var(--text-muted)'
+            }}>
+              <Info size={13} color="var(--accent-blue)" />
+              <span><strong>Prototype Demonstration:</strong> Simulates crowd-sourced reporting, heuristic AI triage, and extension dispatch. No live government authorities are contacted.</span>
+            </div>
           </div>
 
-          {/* Quick Action Button */}
-          <div style={{ display: 'flex', gap: '10px', alignSelf: 'flex-start' }}>
+          {/* Quick Action Buttons */}
+          <div style={{ display: 'flex', gap: '8px', alignSelf: 'flex-start', flexWrap: 'wrap' }}>
             <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleResetToBenchmark}
+              style={{ padding: '10px 14px', fontSize: '0.85rem' }}
+              title="Reset stored reports and tickets to initial benchmark data"
+            >
+              <RotateCcw size={14} />
+              Reset Benchmark Data
+            </button>
+
+            <button
+              type="button"
               className="btn btn-primary"
               onClick={() => setShowReportModal(true)}
               style={{ padding: '10px 18px', fontWeight: 700, fontSize: '0.9rem' }}
@@ -300,7 +400,7 @@ export default function CommunityPage({ setActivePage }) {
             <AlertTriangle size={15} color="var(--accent-amber)" />
           </div>
           <div className="kpi-value" style={{ color: 'var(--accent-amber)' }}>{hotspots.length}</div>
-          <div className="kpi-subtext">Across 5 major crop belts</div>
+          <div className="kpi-subtext">Across 5 simulated crop belts</div>
         </div>
 
         <div className="kpi-card" style={{ borderLeft: '3px solid var(--color-brand)' }}>
@@ -311,7 +411,7 @@ export default function CommunityPage({ setActivePage }) {
           <div className="kpi-value" style={{ color: 'var(--color-brand)' }}>
             {reports.reduce((acc, r) => acc + r.confirmedByCount, 0)}
           </div>
-          <div className="kpi-subtext">Verified smallholder reports</div>
+          <div className="kpi-subtext">{reports.length} smallholder reports (Persistent)</div>
         </div>
 
         <div className="kpi-card" style={{ borderLeft: '3px solid var(--accent-sky)' }}>
@@ -320,7 +420,7 @@ export default function CommunityPage({ setActivePage }) {
             <Stethoscope size={15} color="var(--accent-sky)" />
           </div>
           <div className="kpi-value" style={{ color: 'var(--accent-sky)' }}>{tickets.length}</div>
-          <div className="kpi-subtext">Active agronomist tickets</div>
+          <div className="kpi-subtext">Demonstration dispatch tickets</div>
         </div>
 
         <div className="kpi-card" style={{ borderLeft: '3px solid #7e22ce' }}>
@@ -344,7 +444,7 @@ export default function CommunityPage({ setActivePage }) {
         paddingBottom: '12px'
       }}>
         {/* Main View Tabs */}
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={() => setActiveTab('hotspots')}
             style={{
@@ -457,7 +557,18 @@ export default function CommunityPage({ setActivePage }) {
           TAB 1: REGIONAL RISK RADAR & HOTSPOTS
           ========================================================================= */}
       {activeTab === 'hotspots' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Interactive Regional GIS Map Experience */}
+          <RegionalRiskMap
+            hotspots={filteredHotspots}
+            selectedHotspotId={selectedHotspotId}
+            onSelectHotspot={(id) => {
+              setSelectedHotspotId(id);
+              const el = document.getElementById(`hotspot-card-${id}`);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }}
+          />
+
           {/* Privacy & Science Guarantee callout */}
           <div style={{
             display: 'flex',
@@ -468,15 +579,17 @@ export default function CommunityPage({ setActivePage }) {
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--border-subtle)',
             fontSize: '0.82rem',
-            color: 'var(--text-secondary)'
+            color: 'var(--text-secondary)',
+            flexWrap: 'wrap',
+            gap: '8px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <ShieldCheck size={18} color="var(--color-brand)" />
               <span>
-                <strong>Verified Triangulation:</strong> Hotspot alarms require 3+ corroborating farmer cluster signals within 15km or an authenticated ICAR/PAU university field bulletin.
+                <strong>Prototype Triangulation Engine:</strong> Demonstrates multi-source spatial triangulation requiring 3+ corroborating cluster signals or historical ICAR/PAU university field bulletins. (Demonstration mode).
               </span>
             </div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Updated real-time</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Simulated Benchmark Scenarios</span>
           </div>
 
           {/* Hotspot Cards Grid */}
@@ -491,10 +604,15 @@ export default function CommunityPage({ setActivePage }) {
                 return (
                   <div
                     key={hotspot.id}
+                    id={`hotspot-card-${hotspot.id}`}
                     className="card"
                     style={{
                       padding: '20px',
                       borderLeft: isHigh ? '4px solid var(--status-danger)' : '4px solid var(--accent-amber)',
+                      borderTop: hotspot.id === selectedHotspotId ? '2px solid var(--color-brand)' : '1px solid var(--border-default)',
+                      borderRight: hotspot.id === selectedHotspotId ? '2px solid var(--color-brand)' : '1px solid var(--border-default)',
+                      borderBottom: hotspot.id === selectedHotspotId ? '2px solid var(--color-brand)' : '1px solid var(--border-default)',
+                      boxShadow: hotspot.id === selectedHotspotId ? '0 0 0 3px rgba(27, 83, 46, 0.15)' : 'var(--shadow-xs)',
                       transition: 'transform 0.15s ease, box-shadow 0.15s ease'
                     }}
                   >
@@ -513,7 +631,7 @@ export default function CommunityPage({ setActivePage }) {
                               {hotspot.threatType}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '3px', flexWrap: 'wrap' }}>
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <MapPin size={13} /> {hotspot.region} (~{hotspot.radiusKm} km radius)
                             </span>
@@ -537,12 +655,13 @@ export default function CommunityPage({ setActivePage }) {
                         background: 'rgba(2, 132, 199, 0.06)',
                         border: '1px solid rgba(2, 132, 199, 0.2)',
                         padding: '6px 12px',
-                        borderRadius: 'var(--radius-sm)'
+                        borderRadius: 'var(--radius-sm)',
+                        maxWidth: '360px'
                       }}>
                         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--accent-blue)', textTransform: 'uppercase' }}>
-                          Verified Scientific Source
+                          Academic Benchmark Reference
                         </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 600 }}>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 600, textAlign: 'right' }}>
                           {hotspot.officialSource}
                         </div>
                       </div>
@@ -560,7 +679,7 @@ export default function CommunityPage({ setActivePage }) {
                     }}>
                       <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-main)', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <Sprout size={13} color="var(--color-brand)" />
-                        Immediate Actionable Water & Crop Protocol:
+                        Actionable Water & Crop Management Protocol:
                       </div>
                       {hotspot.preventiveAction}
                     </div>
@@ -568,19 +687,25 @@ export default function CommunityPage({ setActivePage }) {
                     {/* Footer Actions */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '10px' }}>
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        Field coordinates: {hotspot.coordinates.lat.toFixed(2)}° N, {hotspot.coordinates.lon.toFixed(2)}° E (Anonymized zone)
+                        Cluster center: {hotspot.coordinates.lat.toFixed(2)}° N, {hotspot.coordinates.lon.toFixed(2)}° E (5km fuzzed coordinate)
                       </div>
 
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <button
                           className="btn btn-secondary"
                           onClick={() => {
-                            setSelectedCropFilter(hotspot.crop.toLowerCase().includes('wheat') ? 'wheat' : hotspot.crop.toLowerCase().includes('cotton') ? 'cotton' : 'rice');
+                            const cropLower = hotspot.crop.toLowerCase();
+                            if (cropLower.includes('wheat')) setSelectedCropFilter('wheat');
+                            else if (cropLower.includes('cotton')) setSelectedCropFilter('cotton');
+                            else if (cropLower.includes('rice') || cropLower.includes('paddy')) setSelectedCropFilter('rice');
+                            else if (cropLower.includes('sugarcane')) setSelectedCropFilter('sugarcane');
+                            else if (cropLower.includes('maize')) setSelectedCropFilter('maize');
+                            else setSelectedCropFilter('all');
                             setActiveTab('reports');
                           }}
                           style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                         >
-                          View {hotspot.reportsCount} Field Signals
+                          View Field Signals
                         </button>
 
                         <button
@@ -599,7 +724,7 @@ export default function CommunityPage({ setActivePage }) {
                           style={{ padding: '6px 14px', fontSize: '0.8rem' }}
                         >
                           <Stethoscope size={13} />
-                          Request Extension Inspection
+                          Simulate KVK Escalation
                         </button>
                       </div>
                     </div>
@@ -626,12 +751,14 @@ export default function CommunityPage({ setActivePage }) {
             borderRadius: 'var(--radius-md)',
             border: '1px solid rgba(126, 34, 206, 0.18)',
             fontSize: '0.82rem',
-            color: 'var(--text-secondary)'
+            color: 'var(--text-secondary)',
+            flexWrap: 'wrap',
+            gap: '8px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <EyeOff size={18} color="#7e22ce" />
               <span>
-                <strong>Zero PII Retention:</strong> Smallholder names, phone numbers, and exact survey numbers are never stored. Locations are strictly fuzzed to randomized village cluster IDs to prevent grain price manipulation.
+                <strong>Zero PII Retention:</strong> Smallholder names, phone numbers, and exact survey numbers are never stored. Locations are strictly fuzzed to randomized 5km village cluster IDs.
               </span>
             </div>
             <button
@@ -673,6 +800,11 @@ export default function CommunityPage({ setActivePage }) {
                         <span className={`badge ${isHigh ? 'badge-danger' : 'badge-warning'}`}>
                           {report.severity.toUpperCase()}
                         </span>
+                        {report.isSimulatedSubmission && (
+                          <span className="badge badge-secondary" style={{ fontSize: '0.68rem' }}>
+                            Demo Input
+                          </span>
+                        )}
                         {report.escalatedToKvk && (
                           <span className="badge badge-info" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                             <Stethoscope size={11} /> KVK Escalated
@@ -680,7 +812,7 @@ export default function CommunityPage({ setActivePage }) {
                         )}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px', flexWrap: 'wrap' }}>
                         <span>📍 {report.cluster}</span>
                         <span>•</span>
                         <span>🌾 {report.crop}</span>
@@ -732,10 +864,10 @@ export default function CommunityPage({ setActivePage }) {
                       flexDirection: 'column',
                       gap: '4px'
                     }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: 'var(--color-brand-dark)' }}>
                           <Sparkles size={13} color="var(--color-brand)" />
-                          AI Early-Triage Analysis (Confidence: {report.aiTriage.confidence})
+                          AI Early-Triage Analysis (Prototype Heuristic Simulation)
                         </div>
                         <span style={{ fontSize: '0.74rem', color: 'var(--color-brand)', fontWeight: 700 }}>
                           Match Index: {report.aiTriage.matchScore}%
@@ -762,7 +894,7 @@ export default function CommunityPage({ setActivePage }) {
                         style={{ padding: '6px 12px', fontSize: '0.78rem' }}
                       >
                         <Stethoscope size={13} />
-                        Escalate to KVK Scientist
+                        Simulate KVK Escalation
                       </button>
                     ) : (
                       <button
@@ -770,7 +902,7 @@ export default function CommunityPage({ setActivePage }) {
                         onClick={() => setActiveTab('escalations')}
                         style={{ padding: '6px 12px', fontSize: '0.78rem', color: 'var(--accent-blue)', borderColor: 'var(--accent-blue)' }}
                       >
-                        View Active Ticket & SLA →
+                        View Simulated Ticket & SLA →
                       </button>
                     )}
                   </div>
@@ -794,9 +926,12 @@ export default function CommunityPage({ setActivePage }) {
                 Krishi Vigyan Kendra (KVK) Agronomic Escalation Desk
               </h3>
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              When smallholder field anomalies exceed automated water-scheduling heuristics, reports are escalated directly to district agricultural scientists and hydrogeologists. Each ticket carries a tracked SLA and field investigation log.
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '6px' }}>
+              When smallholder field anomalies exceed automated water-scheduling heuristics, reports are escalated directly to district agricultural scientists and hydrogeologists.
             </p>
+            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+              ⚠️ <strong>Demonstration Workflow:</strong> Simulates the referral and triage protocol proposed for KVK extension officers. No physical personnel are contacted.
+            </div>
           </div>
 
           {/* Tickets List */}
@@ -829,9 +964,14 @@ export default function CommunityPage({ setActivePage }) {
                         <span className="badge badge-info">
                           {ticket.status}
                         </span>
+                        {ticket.isSimulatedTicket && (
+                          <span className="badge badge-secondary" style={{ fontSize: '0.68rem' }}>
+                            Simulated Dispatch
+                          </span>
+                        )}
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px', flexWrap: 'wrap' }}>
                         <span>📍 {ticket.cluster}</span>
                         <span>•</span>
                         <span>🌾 {ticket.crop}</span>
@@ -851,7 +991,7 @@ export default function CommunityPage({ setActivePage }) {
                       border: `1px solid ${ticket.status === 'Official Advisory Issued' ? 'var(--color-brand-border)' : 'rgba(217, 119, 6, 0.25)'}`
                     }}>
                       <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-subtle)' }}>
-                        Extension Service SLA
+                        Extension Service SLA Target
                       </span>
                       <span style={{
                         fontSize: '0.85rem',
@@ -877,7 +1017,7 @@ export default function CommunityPage({ setActivePage }) {
                     gap: '8px'
                   }}>
                     <div>
-                      <span style={{ color: 'var(--text-muted)' }}>Assigned Expert: </span>
+                      <span style={{ color: 'var(--text-muted)' }}>Assigned Expert (Simulated Role): </span>
                       <strong style={{ color: 'var(--text-main)' }}>{ticket.assignedExpert}</strong>
                     </div>
                     <div style={{ color: 'var(--text-subtle)', fontSize: '0.76rem' }}>
@@ -900,14 +1040,14 @@ export default function CommunityPage({ setActivePage }) {
                       fontSize: '0.84rem',
                       color: 'var(--color-brand-dark)'
                     }}>
-                      <strong>Official Resolution:</strong> {ticket.resolutionNotes}
+                      <strong>Resolution Note:</strong> {ticket.resolutionNotes}
                     </div>
                   )}
 
                   {/* Lifecycle Steps Pipeline */}
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
                     gap: '8px',
                     paddingTop: '12px',
                     borderTop: '1px solid var(--border-subtle)'
@@ -973,7 +1113,7 @@ export default function CommunityPage({ setActivePage }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <PlusCircle size={20} color="var(--color-brand)" />
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                  Report Crop Risk or Outbreak
+                  Report Crop Risk or Outbreak (Demo)
                 </h3>
               </div>
               <button
@@ -1062,9 +1202,9 @@ export default function CommunityPage({ setActivePage }) {
                 <label className="form-label">Approx. Affected Field Area (Acres)</label>
                 <input
                   type="number"
-                  step="0.5"
-                  min="0.5"
-                  max="100"
+                  step="0.1"
+                  min="0.1"
+                  max="1000"
                   className="form-input"
                   value={newReport.acreage}
                   onChange={(e) => setNewReport({ ...newReport, acreage: e.target.value })}
@@ -1174,7 +1314,7 @@ export default function CommunityPage({ setActivePage }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Stethoscope size={22} color="var(--accent-sky)" />
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                  Escalate to Krishi Vigyan Kendra
+                  Simulate Extension Desk Escalation
                 </h3>
               </div>
               <button
@@ -1185,8 +1325,8 @@ export default function CommunityPage({ setActivePage }) {
               </button>
             </div>
 
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.5 }}>
-              You are about to dispatch an official extension service ticket for:
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: 1.5 }}>
+              This simulates generating an official extension triage ticket for local Krishi Vigyan Kendra scientists:
             </p>
 
             <div style={{
@@ -1194,13 +1334,13 @@ export default function CommunityPage({ setActivePage }) {
               background: 'var(--bg-surface-subtle)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--border-subtle)',
-              marginBottom: '16px',
+              marginBottom: '14px',
               fontSize: '0.84rem'
             }}>
               <div><strong>Threat:</strong> {selectedReportForEscalate.threatTitle}</div>
               <div style={{ marginTop: '4px' }}><strong>Cluster:</strong> {selectedReportForEscalate.cluster}</div>
               <div style={{ marginTop: '4px' }}><strong>Crop:</strong> {selectedReportForEscalate.crop}</div>
-              <div style={{ marginTop: '4px' }}><strong>SLA Target:</strong> 4-Hour Agronomist Triage</div>
+              <div style={{ marginTop: '4px' }}><strong>Simulated SLA Target:</strong> 4-Hour Agronomist Triage</div>
             </div>
 
             <div style={{
@@ -1215,8 +1355,8 @@ export default function CommunityPage({ setActivePage }) {
               color: 'var(--accent-blue)',
               marginBottom: '18px'
             }}>
-              <Sparkles size={16} />
-              <span>AI will pre-populate diagnostic hypotheses to speed up physical sample analysis by the visiting agronomist.</span>
+              <Info size={16} />
+              <span><strong>Demonstration Workflow:</strong> Simulates how automated AI pre-triage accelerates physical sample diagnosis. No physical agronomist is dispatched.</span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -1233,7 +1373,7 @@ export default function CommunityPage({ setActivePage }) {
                 onClick={handleConfirmEscalation}
                 style={{ fontWeight: 700 }}
               >
-                Confirm Dispatch Ticket
+                Confirm Simulated Dispatch
               </button>
             </div>
           </div>

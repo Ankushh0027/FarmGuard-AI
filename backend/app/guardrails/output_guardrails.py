@@ -24,13 +24,20 @@ UNSUPPORTED_AUTHORITY_PATTERNS = [
     re.compile(r"(?i)\bofficial\s+icar\s+mandate"),
 ]
 
-# Required section headers for structured synthesis
+# Required section keywords and multilingual equivalents for structured synthesis
 REQUIRED_SECTIONS = [
     "RECOMMENDATION",
     "WATER IMPACT",
     "CROP RESIDUE",
     "ENVIRONMENTAL IMPACT",
 ]
+
+SECTION_VARIANTS: Dict[str, List[str]] = {
+    "RECOMMENDATION": ["RECOMMENDATION", "SUGGESTION", "SALAH", "SUJHAAV", "SUJHAV", "सलाह", "सुझाव", "सिफारिश"],
+    "WATER IMPACT": ["WATER IMPACT", "WATER SAVING", "WATER", "PAANI", "PANI", "JAL", "पानी", "जल"],
+    "CROP RESIDUE": ["CROP RESIDUE", "RESIDUE", "STUBBLE", "PARALI", "FASAL AVSHESH", "पराली", "अवशेष"],
+    "ENVIRONMENTAL IMPACT": ["ENVIRONMENTAL IMPACT", "ENV IMPACT", "EMISSION", "CO2", "CARBON", "PARYAVARAN", "पर्यावरण"],
+}
 
 
 def check_numerical_grounding(
@@ -107,12 +114,14 @@ def check_unsupported_certainty(text: str) -> Tuple[bool, Optional[str]]:
 
 
 def check_output_structure(text: str) -> Tuple[bool, Optional[str]]:
-    """Check that required structured sections exist in response."""
+    """Check that required structured sections (or multilingual equivalents) exist in response."""
     if not text:
         return False, "empty_output"
 
-    for section in REQUIRED_SECTIONS:
-        if section not in text.upper():
+    text_upper = text.upper()
+    for section, variants in SECTION_VARIANTS.items():
+        found = any(v.upper() in text_upper for v in variants)
+        if not found:
             return False, f"missing_required_section_{section.lower().replace(' ', '_')}"
 
     return True, None

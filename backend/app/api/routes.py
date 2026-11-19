@@ -7,20 +7,32 @@ Provides:
 - AI agent advisory endpoint (/api/v1/agent/advice)
 """
 
-from typing import Optional
-from fastapi import APIRouter, status, HTTPException, Depends
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, status, HTTPException, Depends, Query
 from fastapi.responses import PlainTextResponse, JSONResponse
 from app.models.farm import (
     FarmInput,
     FarmAnalysisResponse,
     AgentAdviceRequest,
     AgentAdviceResponse,
+    FarmModel,
+    FarmCreateRequest,
+    FarmUpdateRequest,
 )
 from app.calculations.farm_calculator import analyze_farm
 from app.agents.farm_agent import FarmGuardAgent
 from app.config import get_settings
 from app.api.auth import verify_api_key
 from app.api.metrics import get_metrics_registry
+from app.services.farm_storage import (
+    get_all_farms,
+    get_farm_by_id,
+    create_farm,
+    update_farm,
+    delete_farm,
+    reset_farms_to_default,
+)
+from app.services.weather_service import fetch_weather_forecast
 
 router = APIRouter()
 agent_service = FarmGuardAgent()
@@ -145,3 +157,108 @@ def agent_advice_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent advisory service encounter an error: {str(err)}",
         )
+
+
+# ============================================================================
+# PERSISTENT FARM FIELD & GEOLOCATION ENDPOINTS
+# ============================================================================
+
+@router.get(
+    "/api/v1/farms",
+    response_model=List[FarmModel],
+    status_code=status.HTTP_200_OK,
+    tags=["Farms & Geolocation"],
+)
+def list_farms_endpoint():
+    """Retrieve all registered farm plots with GPS coordinates and boundaries."""
+    return get_all_farms()
+
+
+@router.get(
+    "/api/v1/farms/{farm_id}",
+    response_model=FarmModel,
+    status_code=status.HTTP_200_OK,
+    tags=["Farms & Geolocation"],
+)
+def get_farm_endpoint(farm_id: str):
+    """Retrieve a single farm by ID."""
+    farm = get_farm_by_id(farm_id)
+    if not farm:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Farm plot '{farm_id}' not found.",
+        )
+    return farm
+
+
+@router.post(
+    "/api/v1/farms",
+    response_model=FarmModel,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Farms & Geolocation"],
+)
+def create_farm_endpoint(req: FarmCreateRequest):
+    """Register and persist a new farm field with GPS coordinates and boundary polygon."""
+    return create_farm(req)
+
+
+@router.put(
+    "/api/v1/farms/{farm_id}",
+    response_model=FarmModel,
+    status_code=status.HTTP_200_OK,
+    tags=["Farms & Geolocation"],
+)
+def update_farm_endpoint(farm_id: str, req: FarmUpdateRequest):
+    """Update field details, GPS coordinates, or boundary polygon."""
+    updated = update_farm(farm_id, req)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Farm plot '{farm_id}' not found.",
+        )
+    return updated
+
+
+@router.delete(
+    "/api/v1/farms/{farm_id}",
+    status_code=status.HTTP_200_OK,
+    tags=["Farms & Geolocation"],
+)
+def delete_farm_endpoint(farm_id: str):
+    """Delete a farm plot from persistent storage."""
+    success = delete_farm(farm_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Farm plot '{farm_id}' not found.",
+        )
+    return {"status": "deleted", "id": farm_id}
+
+
+@router.post(
+    "/api/v1/farms/reset",
+    response_model=List[FarmModel],
+    status_code=status.HTTP_200_OK,
+    tags=["Farms & Geolocation"],
+)
+def reset_farms_endpoint():
+    """Reset persistent farm database to default benchmark farms."""
+    return reset_farms_to_default()
+
+
+# ============================================================================
+# WEATHER ENDPOINTS (DIRECT COORDINATES SUPPORT)
+# ============================================================================
+
+@router.get(
+    "/api/v1/weather/forecast",
+    status_code=status.HTTP_200_OK,
+    tags=["Weather"],
+)
+def get_weather_forecast_endpoint(
+    location: Optional[str] = Query("Uttar Pradesh", description="Location/State name"),
+    latitude: Optional[float] = Query(None, description="GPS Latitude"),
+    longitude: Optional[float] = Query(None, description="GPS Longitude"),
+):
+    """Fetch live 24-48h weather forecast using exact GPS coordinates or region fallback."""
+    return fetch_weather_forecast(location or "Uttar Pradesh", latitude=latitude, longitude=longitude)

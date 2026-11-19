@@ -6,7 +6,11 @@ timeouts, network failures, and unknown locations.
 """
 
 from typing import Dict, Any, Optional, Tuple
+import time
+import logging
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # Predefined coordinates for major Indian agricultural states/regions (fast, offline-resilient lookup)
 KNOWN_LOCATIONS: Dict[str, Tuple[float, float]] = {
@@ -28,6 +32,15 @@ KNOWN_LOCATIONS: Dict[str, Tuple[float, float]] = {
 }
 
 TIMEOUT_SECONDS = 3.5
+CACHE_TTL_SECONDS = 900.0  # 15 minutes TTL
+
+# In-memory weather cache: cache_key -> (timestamp, weather_dict)
+_WEATHER_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def clear_weather_cache():
+    """Clear in-memory weather cache (primarily for testing)."""
+    _WEATHER_CACHE.clear()
 
 
 def resolve_coordinates(location: str) -> Optional[Tuple[float, float]]:
@@ -56,16 +69,39 @@ def resolve_coordinates(location: str) -> Optional[Tuple[float, float]]:
     return None
 
 
-def fetch_weather_forecast(location: str) -> Dict[str, Any]:
+def fetch_weather_forecast(
+    location: str,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+) -> Dict[str, Any]:
     """Fetch 24-48h forecast precipitation amount (mm) and rain probability from Open-Meteo API.
 
     Args:
         location: Indian state, city, or district name.
+        latitude: Optional direct GPS latitude coordinate.
+        longitude: Optional direct GPS longitude coordinate.
 
     Returns:
         Structured weather dictionary with status 'available' or 'unavailable'.
     """
-    coords = resolve_coordinates(location)
+    norm_loc = location.strip().lower()
+    now = time.time()
+
+    # If direct coordinates are provided, prioritize them
+    if latitude is not None and longitude is not None:
+        coords = (float(latitude), float(longitude))
+        cache_key = f"coord_{round(coords[0], 3)}_{round(coords[1], 3)}"
+    else:
+        coords = resolve_coordinates(location)
+        cache_key = norm_loc
+
+    # 1. Check TTL cache
+    if cache_key in _WEATHER_CACHE:
+        cached_ts, cached_val = _WEATHER_CACHE[cache_key]
+        if now - cached_ts < CACHE_TTL_SECONDS:
+            logger.debug(f"Serving weather forecast for '{cache_key}' from TTL cache")
+            return cached_val
+
     if not coords:
         return {
             "location": location,
@@ -79,6 +115,12 @@ def fetch_weather_forecast(location: str) -> Dict[str, Any]:
         }
 
     lat, lon = coords
+    cache_key_coord = f"{round(lat, 2)}_{round(lon, 2)}"
+    if cache_key_coord in _WEATHER_CACHE:
+        cached_ts, cached_val = _WEATHER_CACHE[cache_key_coord]
+        if now - cached_ts < CACHE_TTL_SECONDS:
+            return cached_val
+
     endpoint = (
         f"https://api.open-meteo.com/v1/forecast?"
         f"latitude={lat}&longitude={lon}&daily=precipitation_sum,precipitation_probability_max&timezone=Asia%2FKolkata"
@@ -109,7 +151,7 @@ def fetch_weather_forecast(location: str) -> Dict[str, Any]:
             prob_percent = float(precip_probs[0]) if precip_probs and precip_probs[0] is not None else 0.0
             prob_normalized = round(prob_percent / 100.0, 2)
 
-            return {
+            res = {
                 "location": location,
                 "latitude": lat,
                 "longitude": lon,
@@ -119,7 +161,12 @@ def fetch_weather_forecast(location: str) -> Dict[str, Any]:
                 "status": "available",
                 "message": "Forecast retrieved successfully."
             }
+            # Cache under both normalized location name and rounded coords
+            _WEATHER_CACHE[norm_loc] = (now, res)
+            _WEATHER_CACHE[cache_key_coord] = (now, res)
+            return res
     except httpx.TimeoutException:
+        logger.warning(f"Weather lookup timed out for location '{location}'")
         return {
             "location": location,
             "latitude": lat,

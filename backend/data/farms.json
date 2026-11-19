@@ -1,0 +1,125 @@
+[
+  {
+    "id": "farm-1",
+    "name": "North Tubewell Plot (उत्तर खेत)",
+    "crop": "wheat",
+    "area_acres": 2.0,
+    "area_hectares": 0.81,
+    "soil_type": "alluvial",
+    "current_irrigation_mm": 35.0,
+    "location": "Uttar Pradesh",
+    "rainfall_probability": 15.0,
+    "forecast_rainfall_mm": 0.0,
+    "soil_moisture_percent": 58.0,
+    "pump_flow_lpm": 460.0,
+    "pump_hp": 5.0,
+    "electricity_tariff": 6.0,
+    "sowing_date": "2026-10-25",
+    "notes": "Near tube-well #1. Sown on Oct 25. Regular alluvial loam.",
+    "latitude": 26.8524,
+    "longitude": 80.9412,
+    "gps_accuracy": 5.2,
+    "location_captured_at": "2026-10-25T08:30:00Z",
+    "location_source": "gps",
+    "boundary_coordinates": [
+      [
+        26.853,
+        80.9405
+      ],
+      [
+        26.8532,
+        80.9422
+      ],
+      [
+        26.8518,
+        80.942
+      ],
+      [
+        26.8516,
+        80.9403
+      ]
+    ]
+  },
+  {
+    "id": "farm-2",
+    "name": "Canal Side Plot (नहर वाला खेत)",
+    "crop": "rice",
+    "area_acres": 1.5,
+    "area_hectares": 0.61,
+    "soil_type": "clayey",
+    "current_irrigation_mm": 65.0,
+    "location": "Punjab",
+    "rainfall_probability": 20.0,
+    "forecast_rainfall_mm": 0.0,
+    "soil_moisture_percent": 74.0,
+    "pump_flow_lpm": 700.0,
+    "pump_hp": 7.5,
+    "electricity_tariff": 6.0,
+    "sowing_date": "2026-07-10",
+    "notes": "Heavy clay soil, canal sub-distributary access. High water retention.",
+    "latitude": 30.9085,
+    "longitude": 75.8532,
+    "gps_accuracy": 4.8,
+    "location_captured_at": "2026-07-10T09:15:00Z",
+    "location_source": "gps",
+    "boundary_coordinates": [
+      [
+        30.9092,
+        75.8525
+      ],
+      [
+        30.9093,
+        75.854
+      ],
+      [
+        30.9078,
+        75.8539
+      ],
+      [
+        30.9077,
+        75.8524
+      ]
+    ]
+  },
+  {
+    "id": "farm-3",
+    "name": "South Borewell Plot (दक्षिण बोरवेल)",
+    "crop": "maize",
+    "area_acres": 3.0,
+    "area_hectares": 1.21,
+    "soil_type": "sandy loam",
+    "current_irrigation_mm": 40.0,
+    "location": "Haryana",
+    "rainfall_probability": 10.0,
+    "forecast_rainfall_mm": 0.0,
+    "soil_moisture_percent": 38.0,
+    "pump_flow_lpm": 460.0,
+    "pump_hp": 5.0,
+    "electricity_tariff": 6.0,
+    "sowing_date": "2026-09-01",
+    "notes": "Permeable sandy loam. Root zone drying faster, requires monitoring.",
+    "latitude": 29.6912,
+    "longitude": 76.9854,
+    "gps_accuracy": 6.0,
+    "location_captured_at": "2026-09-01T10:00:00Z",
+    "location_source": "manual",
+    "boundary_coordinates": [
+      [
+        29.6922,
+        76.9842
+      ],
+      [
+        29.6924,
+        76.9868
+      ],
+      [
+        29.6902,
+        76.9866
+      ],
+      [
+        29.69,
+        76.984
+      ]
+    ]
+  }
+]

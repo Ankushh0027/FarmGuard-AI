@@ -20,14 +20,19 @@ import {
   HelpCircle,
   Zap,
   Timer,
-  RotateCcw
+  RotateCcw,
+  Compass,
+  ArrowRight,
+  TrendingDown,
+  Languages,
+  X
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import { getAgentAdvice } from '../services/api';
 import Badge from '../components/Badge';
 
 export default function AIAdvisorPage({ setActivePage }) {
-  const { farm, hasFarmProfile, addActivity } = useFarm();
+  const { farm, hasFarmProfile, addActivity, language, setLanguage, t } = useFarm();
 
   // Conversational session context memory
   const [sessionFarm, setSessionFarm] = useState(() => {
@@ -57,17 +62,64 @@ export default function AIAdvisorPage({ setActivePage }) {
     };
   });
 
+  // Sync session farm when active farm changes
+  useEffect(() => {
+    if (farm && farm.crop) {
+      setSessionFarm({
+        crop: farm.crop,
+        area_acres: farm.area_acres || '',
+        soil_type: farm.soil_type || 'alluvial',
+        location: farm.location || 'Uttar Pradesh',
+        soil_moisture_percent: farm.soil_moisture_percent || '',
+        current_irrigation_mm: farm.current_irrigation_mm || 35.0,
+        rainfall_probability: farm.rainfall_probability || 0,
+        forecast_rainfall_mm: farm.forecast_rainfall_mm || null,
+        pump_flow_lpm: farm.pump_flow_lpm || '',
+      });
+    }
+  }, [farm]);
+
+  const languageMode = language; // Synced with global language
+
+  const getWelcomeText = (lang) => {
+    if (lang === 'hindi') {
+      return `नमस्ते किसान भाई! मैं **FarmGuard कृषि सलाहकार** हूँ।
+
+मैं आपकी भाषा (हिंदी, Hinglish या English) में सरल और सही सलाह देता हूँ:
+
+• **सिंचाई कब करें:** आज खेत में पानी लगाएं या आने वाली बारिश का इंतजार करें?
+• **पानी व पंप का समय:** खेत के लिए कितने लीटर पानी और ट्यूबवेल कितने घंटे चलाना है?
+• **फसल सुरक्षा व पराली:** फसल की देखभाल और पराली को बिना जलाए खाद बनाने का तरीका।
+
+आप नीचे दिए गए विकल्पों में से चुन सकते हैं या अपना प्रश्न लिख सकते हैं।`;
+    }
+    if (lang === 'hinglish') {
+      return `Namaste kisan bhai! Main **FarmGuard Krishi Salahkar** hoon.
+
+Main aapki bhasha (Hindi, Hinglish ya English) me practical kheti salah deta hoon:
+
+• **Sinchai kab karein:** Aaj khet me paani lagayein ya aane wali baarish ka wait karein?
+• **Paani aur pump ka time:** Khet ke liye kitne litres paani aur pump kitni der chalana hai?
+• **Fasal suraksha aur parali:** Parali ko bina jalaye khad banane aur keedo se bachne ki salah.
+
+Aap neeche diye gaye buttons click kar sakte hain ya apna sawaal likh sakte hain.`;
+    }
+    return `Hello! I am **FarmGuard Agricultural Advisor**.
+
+I provide practical, ICAR-grounded field advice in **English**, **Hinglish**, or **हिंदी**:
+
+• **Irrigation Scheduling:** Whether to water your crop today or wait for upcoming rainfall.
+• **Volume & Pumping Runtime:** Exact litres required and tubewell pump running hours.
+• **Crop Health & Stubble Advice:** Managing residue without open burning to enrich soil.
+
+Feel free to pick a question below or type your query in your own words.`;
+  };
+
   const [messages, setMessages] = useState([
     {
       id: 'welcome-1',
       sender: 'assistant',
-      text: `Hello! I am **FarmGuard**, your agricultural decision-support assistant.
-
-Ask me about:
-• **Water Needs**: How much water your crop needs based on your field size.
-• **Irrigation Timing**: Should you run your pump today or wait for rain?
-• **Pump Running Time**: How many hours to run your pump based on water flow.
-• **Crop & Soil Health**: Guidance on soil moisture, symptoms, and water conservation.`,
+      text: getWelcomeText(language),
       recommendation: null,
       tool_trace: [],
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -78,13 +130,31 @@ Ask me about:
   const [isLoading, setIsLoading] = useState(false);
   const [expandedTraces, setExpandedTraces] = useState({});
   const messagesEndRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
-  const suggestedPrompts = [
-    'Should I water my crop today?',
-    'How much water does my rice crop need?',
-    'How long should I run my pump?',
-    'Why is my crop not growing well?',
+  const languageOptions = [
+    { id: 'auto', label: 'Auto (ऑटो)' },
+    { id: 'english', label: 'English' },
+    { id: 'hinglish', label: 'Hinglish' },
+    { id: 'hindi', label: 'हिंदी' },
   ];
+
+  const quickActionPrompts = languageMode === 'hindi' ? [
+    { label: '💧 आज पानी दें या नहीं?', prompt: 'क्या मुझे आज मौसम के अनुसार अपने खेत में पानी देना चाहिए?' },
+    { label: '⏱️ पंप कितने घंटे चलाएं?', prompt: 'मेरे खेत के लिए ट्यूबवेल पंप कितने घंटे चलाना चाहिए?' },
+    { label: '🌾 गेहूं में सही सिंचाई समय', prompt: 'मेरे गेहूं के खेत में पानी कब देना चाहिए?' },
+    { label: '🍂 पराली का सही उपयोग', prompt: 'फसल अवशेष को बिना जलाए खेत में खाद कैसे बनाएं?' },
+  ] : (languageMode === 'hinglish' ? [
+    { label: '💧 Aaj paani du kya?', prompt: 'Kya mujhe forecast ke hisab se aaj khet me paani dena chahiye?' },
+    { label: '⏱️ Pump kitni der chalayein?', prompt: 'Mere khet ke size ke liye tubewell pump kitni der chalana hoga?' },
+    { label: '🌾 Gehun me sinchai', prompt: 'Mere gehun ke khet mein paani kab dena chahiye?' },
+    { label: '🍂 Parali ka istemal', prompt: 'Parali ko bina jalaye kaise use karein?' },
+  ] : [
+    { label: '💧 Should I water today?', prompt: 'Should I irrigate my field today based on the weather forecast?' },
+    { label: '⏱️ How long to run pump?', prompt: 'How many hours should I run my tubewell pump for my current field size?' },
+    { label: '🌾 Wheat watering stages', prompt: 'When should I irrigate my wheat crop?' },
+    { label: '🍂 Manage crop stubble', prompt: 'What are the best methods to manage crop residue without open burning?' },
+  ]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -98,12 +168,25 @@ Ask me about:
     setExpandedTraces(prev => ({ ...prev, [msgId]: !prev[msgId] }));
   };
 
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsLoading(false);
+  };
+
   const handleResetChat = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsLoading(false);
     setMessages([
       {
         id: `welcome-${Date.now()}`,
         sender: 'assistant',
-        text: `Conversation reset. I am **FarmGuard**, ready to help with your crop, field water needs, weather or pump questions.`,
+        text: getWelcomeText(language),
         recommendation: null,
         tool_trace: [],
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -129,160 +212,187 @@ Ask me about:
 
     // Crop extraction
     if (!updated.crop) {
-      if (msg.includes('wheat') || msg.includes('gehu') || msg.includes('gehoon')) updated.crop = 'wheat';
-      else if (msg.includes('rice') || msg.includes('chawal') || msg.includes('dhaan') || msg.includes('dhan')) updated.crop = 'rice';
-      else if (msg.includes('maize') || msg.includes('makka') || msg.includes('bhutta')) updated.crop = 'maize';
-      else if (msg.includes('sugarcane') || msg.includes('ganna')) updated.crop = 'sugarcane';
+      if (msg.includes('wheat') || msg.includes('gehu') || msg.includes('gehoon') || msg.includes('गेहूं')) updated.crop = 'wheat';
+      else if (msg.includes('rice') || msg.includes('chawal') || msg.includes('dhaan') || msg.includes('dhan') || msg.includes('धान')) updated.crop = 'rice';
+      else if (msg.includes('maize') || msg.includes('makka') || msg.includes('bhutta') || msg.includes('मक्का')) updated.crop = 'maize';
+      else if (msg.includes('sugarcane') || msg.includes('ganna') || msg.includes('गन्ना')) updated.crop = 'sugarcane';
     }
 
     // Field size extraction
-    const mArea = msg.match(/(\d+(?:\.\d+)?)\s*(?:acre|acres|ekad)/);
+    const mArea = msg.match(/(\d+(?:\.\d+)?)\s*(?:acre|acres|ekad|एकड़)/);
     if (mArea) updated.area_acres = parseFloat(mArea[1]);
 
     // Soil moisture extraction
-    const mMoist = msg.match(/(?:moisture|soil moisture|nami)(?:\s+is|\s*[:=])?\s*(\d+(?:\.\d+)?)\s*%/);
+    const mMoist = msg.match(/(?:moisture|soil moisture|nami|नमी)(?:\s+is|\s*[:=])?\s*(\d+(?:\.\d+)?)\s*%/);
     if (mMoist) updated.soil_moisture_percent = parseFloat(mMoist[1]);
     else {
-      const mMoist2 = msg.match(/(\d+(?:\.\d+)?)\s*%\s*(?:soil\s+)?moisture/);
+      const mMoist2 = msg.match(/(\d+(?:\.\d+)?)\s*%\s*(?:soil\s+)?(?:moisture|nami|नमी)/);
       if (mMoist2) updated.soil_moisture_percent = parseFloat(mMoist2[1]);
     }
 
     // Location extraction
-    for (const loc of ['uttar pradesh', 'punjab', 'haryana', 'bihar', 'madhya pradesh', 'rajasthan', 'gujarat', 'maharashtra', 'up', 'mp']) {
-      if (loc === 'up' && /\bup\b/.test(msg)) { updated.location = 'Uttar Pradesh'; break; }
-      else if (loc === 'mp' && /\bmp\b/.test(msg)) { updated.location = 'Madhya Pradesh'; break; }
-      else if (msg.includes(loc)) {
-        updated.location = loc.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        break;
-      }
-    }
+    if (msg.includes('punjab') || msg.includes('पंजाब')) updated.location = 'Punjab';
+    else if (msg.includes('haryana') || msg.includes('हरियाणा')) updated.location = 'Haryana';
+    else if (msg.includes('uttar pradesh') || msg.includes('up') || msg.includes('उत्तर प्रदेश')) updated.location = 'Uttar Pradesh';
+    else if (msg.includes('rajasthan') || msg.includes('राजस्थान')) updated.location = 'Rajasthan';
+    else if (msg.includes('bihar') || msg.includes('बिहार')) updated.location = 'Bihar';
 
-    // Pump flow extraction
-    const mPump = msg.match(/(\d+(?:\.\d+)?)\s*(?:lpm|litres\/min|liters\/min|l\/min|litres\s+per\s+minute|liters\s+per\s+minute)/);
-    if (mPump) updated.pump_flow_lpm = parseFloat(mPump[1]);
-
-    setSessionFarm(updated);
     return updated;
   };
 
-  const handleSend = async (textToSend) => {
-    const text = (textToSend || inputMessage).trim();
-    if (!text || isLoading) return;
+  const handleSend = async (overrideText = null) => {
+    const textToSend = overrideText || inputMessage;
+    if (!textToSend || !textToSend.trim() || isLoading) return;
 
-    setInputMessage('');
-    const userMsgId = `user-${Date.now()}`;
-    const newUserMsg = {
-      id: userMsgId,
+    // Cancel previous pending request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const userMsg = {
+      id: `user-${Date.now()}`,
       sender: 'user',
-      text: text,
+      text: textToSend.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages(prev => [...prev, newUserMsg]);
+    setMessages(prev => [...prev, userMsg]);
+    if (!overrideText) setInputMessage('');
     setIsLoading(true);
 
-    // Accumulate parameters into conversation context
-    const currentContext = updateSessionFromText(text);
+    const updatedContext = updateSessionFromText(textToSend);
+    setSessionFarm(updatedContext);
+
+    // Build conversation memory (last 6 turns)
+    const history = messages
+      .filter(m => m.id !== 'welcome-1' && !m.id.startsWith('error-') && !m.id.startsWith('cancel-'))
+      .slice(-6)
+      .map(m => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text,
+      }));
 
     try {
-      // Build farm payload using accumulated session memory without fabricating missing parameters
-      const farmPayload = currentContext.crop ? {
-        crop: currentContext.crop,
-        area_acres: currentContext.area_acres !== '' && currentContext.area_acres !== null && currentContext.area_acres !== undefined ? parseFloat(currentContext.area_acres) : null,
-        soil_type: currentContext.soil_type || 'alluvial',
-        current_irrigation_mm: currentContext.current_irrigation_mm !== '' && currentContext.current_irrigation_mm !== null && currentContext.current_irrigation_mm !== undefined ? parseFloat(currentContext.current_irrigation_mm) : 35.0,
-        location: currentContext.location || null,
-        rainfall_probability: currentContext.rainfall_probability !== '' && currentContext.rainfall_probability !== null && currentContext.rainfall_probability !== undefined ? parseFloat(currentContext.rainfall_probability) : null,
-        forecast_rainfall_mm: currentContext.forecast_rainfall_mm !== null && currentContext.forecast_rainfall_mm !== '' && currentContext.forecast_rainfall_mm !== undefined
-          ? parseFloat(currentContext.forecast_rainfall_mm)
-          : null,
-        soil_moisture_percent: currentContext.soil_moisture_percent !== '' && currentContext.soil_moisture_percent !== null && currentContext.soil_moisture_percent !== undefined
-          ? parseFloat(currentContext.soil_moisture_percent)
-          : null,
-        pump_flow_lpm: currentContext.pump_flow_lpm !== '' && currentContext.pump_flow_lpm !== null && currentContext.pump_flow_lpm !== undefined ? parseFloat(currentContext.pump_flow_lpm) : null,
-      } : null;
-
       const payload = {
-        message: text,
-        farm: farmPayload,
+        message: textToSend.trim(),
+        language: languageMode === 'auto' ? undefined : languageMode,
+        history,
+        farm: {
+          crop: updatedContext.crop || 'wheat',
+          area_acres: updatedContext.area_acres ? parseFloat(updatedContext.area_acres) : 2.0,
+          soil_type: updatedContext.soil_type || 'alluvial',
+          soil_moisture_percent: updatedContext.soil_moisture_percent !== '' ? parseFloat(updatedContext.soil_moisture_percent) : 38.0,
+          current_irrigation_mm: updatedContext.current_irrigation_mm ? parseFloat(updatedContext.current_irrigation_mm) : 35.0,
+          rainfall_probability: updatedContext.rainfall_probability || 0,
+          forecast_rainfall_mm: updatedContext.forecast_rainfall_mm !== null ? parseFloat(updatedContext.forecast_rainfall_mm) : null,
+          location: updatedContext.location || 'Uttar Pradesh',
+          pump_flow_lpm: updatedContext.pump_flow_lpm ? parseFloat(updatedContext.pump_flow_lpm) : null,
+        }
       };
 
-      const response = await getAgentAdvice(payload);
+      const response = await getAgentAdvice(payload, { signal: controller.signal });
 
       const assistantMsg = {
         id: `assistant-${Date.now()}`,
         sender: 'assistant',
-        text: response.answer,
-        recommendation: response.recommendation,
-        water_analysis: response.water_analysis,
-        environmental_impact: response.environmental_impact,
+        text: response.answer || (language === 'hindi' ? 'मैंने आपके खेत की स्थिति का विश्लेषण करके ऊपर दी गई सलाह तैयार की है।' : 'I evaluated your field parameters and generated an agronomic recommendation above.'),
+        recommendation: response.recommendation || null,
+        water_analysis: response.water_analysis || null,
         tool_trace: response.tool_trace || [],
-        security: response.security,
-        is_client_fallback: Boolean(response.is_client_fallback),
+        detected_language: response.detected_language,
+        is_client_fallback: response.is_client_fallback || false,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
       setMessages(prev => [...prev, assistantMsg]);
 
+      // Add to audit activity
       addActivity({
-        title: `AI Question: "${text.slice(0, 36)}..."`,
-        type: 'ADVISOR',
-        status: response.blocked ? 'Blocked' : 'Answered',
-        location: currentContext.location || 'Uttar Pradesh',
-        recommended_mm: response.recommendation?.recommended_irrigation_mm ?? null,
-        water_saved_l: response.water_analysis?.water_savings_liters ?? null,
-        requestId: response.request_id || 'fg-trace',
+        title: `Advisor: "${textToSend.slice(0, 30)}..."`,
+        description: `Consulted FarmGuard AI for ${updatedContext.crop || 'field'} water guidance.`,
+        category: 'advisor',
       });
     } catch (err) {
-      setMessages(prev => [...prev, {
-        id: `err-${Date.now()}`,
-        sender: 'assistant',
-        text: `⚠️ **Connection issue:** ${err.message || 'Unable to communicate with the FarmGuard agent. Please ensure the backend server is running.'}`,
-        tool_trace: [],
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      }]);
+      if (err.name === 'AbortError') {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `cancel-${Date.now()}`,
+            sender: 'assistant',
+            text: language === 'hindi'
+              ? '⏹️ उत्तर रोक दिया गया। आप जब चाहें नया प्रश्न पूछ सकते हैं।'
+              : language === 'hinglish'
+                ? '⏹️ Request roki gayi. Aap jab chahein naya sawaal pooch sakte hain.'
+                : '⏹️ Request cancelled. Feel free to ask another farming question whenever you are ready.',
+            tool_trace: [],
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }
+        ]);
+      } else {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `error-${Date.now()}`,
+            sender: 'assistant',
+            text: language === 'hindi'
+              ? '⚠️ इंटरनेट कनेक्शन जांचें या कुछ पलों बाद पुनः प्रयास करें।'
+              : language === 'hinglish'
+                ? '⚠️ Internet connection check karein ya thodi der baad dobara koshish karein.'
+                : '⚠️ Please check your internet connection or try again in a few moments.',
+            tool_trace: [{ event: 'ERROR', error: String(err) }],
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          }
+        ]);
+      }
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
-  // Build active memory context summary tokens
   const contextTokens = [];
-  if (sessionFarm.crop) contextTokens.push(`Crop: ${sessionFarm.crop.toUpperCase()}`);
-  if (sessionFarm.area_acres) contextTokens.push(`${sessionFarm.area_acres} Acres`);
-  if (sessionFarm.soil_moisture_percent !== '') contextTokens.push(`Moisture: ${sessionFarm.soil_moisture_percent}%`);
+  if (sessionFarm.crop) contextTokens.push(`${language === 'hindi' ? 'फसल' : 'Crop'}: ${sessionFarm.crop.toUpperCase()}`);
+  if (sessionFarm.area_acres) contextTokens.push(`${sessionFarm.area_acres} ${t.acres || 'Acres'}`);
+  if (sessionFarm.soil_moisture_percent !== '') contextTokens.push(`${language === 'hindi' ? 'नमी' : 'Moisture'}: ${sessionFarm.soil_moisture_percent}%`);
   if (sessionFarm.location) contextTokens.push(sessionFarm.location);
-  if (sessionFarm.pump_flow_lpm) contextTokens.push(`Pump: ${sessionFarm.pump_flow_lpm} L/min`);
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '18px', height: 'calc(100vh - 130px)', minHeight: '600px' }}>
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: 'calc(100vh - 128px)', minHeight: '640px' }}>
       {/* Top Banner with Active Farm Context & Clear Option */}
-      <div className="card" style={{ padding: '14px 20px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="card" style={{ padding: '16px 24px', flexShrink: 0, boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--color-brand-muted)',
-              color: 'var(--color-brand)',
+              width: 42,
+              height: 42,
+              borderRadius: 'var(--radius-md)',
+              background: 'linear-gradient(135deg, #0d2818 0%, #1b532e 100%)',
+              color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              boxShadow: '0 3px 8px rgba(13, 40, 24, 0.35)'
             }}>
-              <MessageSquare size={18} />
+              <Bot size={22} />
             </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-main)' }}>
-                Ask FarmGuard
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-main)', letterSpacing: '-0.015em' }}>
+                  {t.advisorTitle || 'FarmGuard Agricultural Advisor'}
+                </span>
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, background: 'var(--color-brand-muted)', color: 'var(--color-brand-dark)', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}>
+                  ICAR Grounded
+                </span>
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                 {contextTokens.length > 0 ? (
-                  <span style={{ color: 'var(--color-brand-dark)', fontWeight: 600 }}>
-                    Active Context: {contextTokens.join(' • ')}
+                  <span style={{ color: 'var(--color-brand-dark)', fontWeight: 700 }}>
+                    {language === 'hindi' ? 'वर्तमान खेत विवरण:' : 'Active Field:'} {contextTokens.join(' • ')}
                   </span>
                 ) : (
-                  'Ask about irrigation, rain, soil or your crop...'
+                  t.explainAdvisor || 'Ask about irrigation depth, pump runtime, rain forecast, or residue mulching...'
                 )}
               </div>
             </div>
@@ -293,136 +403,129 @@ Ask me about:
               type="button"
               className="btn btn-secondary"
               onClick={handleResetChat}
-              style={{ padding: '6px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-              title="Reset chat and start fresh"
+              style={{ padding: '7px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="Reset conversation context"
             >
               <RotateCcw size={13} />
-              Reset Chat
+              {t.reset || 'Reset'}
             </button>
-            <Badge variant="success">Validated AI • Grounded Tools</Badge>
+            <Badge variant="success">{t.guardrailsPill || 'Crop Safety Active'}</Badge>
           </div>
         </div>
       </div>
 
-      {/* Chat Messages Container */}
-      <div className="card" style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '20px',
-        overflow: 'hidden',
-        background: '#ffffff'
-      }}>
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '8px' }}>
+      {/* Main Chat Workspace */}
+      <div
+        className="card advisor-chat-card"
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          backgroundColor: '#ffffff',
+          boxShadow: 'var(--shadow-sm)'
+        }}
+      >
+        {/* Messages Stream */}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '20px', paddingRight: '8px' }}>
           {messages.map((msg) => (
             <div
               key={msg.id}
+              className="advisor-msg-item"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: '85%',
                 alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
               }}
             >
-              {/* Message Bubble Header */}
+              {/* Message Header */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                marginBottom: '4px',
+                marginBottom: '6px',
                 fontSize: '0.74rem',
                 color: 'var(--text-subtle)',
                 flexDirection: msg.sender === 'user' ? 'row-reverse' : 'row',
               }}>
-                <span style={{ fontWeight: 700, color: msg.sender === 'user' ? 'var(--text-main)' : 'var(--color-brand-dark)' }}>
-                  {msg.sender === 'user' ? 'You' : 'FarmGuard Assistant'}
+                <span style={{ fontWeight: 800, color: msg.sender === 'user' ? 'var(--text-main)' : 'var(--color-brand-dark)' }}>
+                  {msg.sender === 'user' ? (language === 'hindi' ? 'आप (किसान)' : 'You') : 'FarmGuard Advisor'}
                 </span>
-                {msg.is_client_fallback && (
-                  <span className="simulation-pill" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>Offline Fallback</span>
+                {msg.detected_language && (
+                  <span className="simulation-pill" style={{ fontSize: '0.68rem', padding: '1px 6px', textTransform: 'capitalize' }}>
+                    {msg.detected_language === 'hindi' ? 'हिंदी' : (msg.detected_language === 'hinglish' ? 'Hinglish' : 'English')}
+                  </span>
                 )}
                 <span>{msg.timestamp}</span>
               </div>
 
-              {/* Bubble Body */}
-              <div style={{
-                padding: '14px 18px',
-                borderRadius: 'var(--radius-md)',
-                background: msg.sender === 'user' ? 'var(--color-brand)' : 'var(--bg-surface-subtle)',
-                color: msg.sender === 'user' ? '#ffffff' : 'var(--text-main)',
-                border: msg.sender === 'user' ? 'none' : '1px solid var(--border-default)',
-                fontSize: '0.9rem',
-                lineHeight: 1.6,
-                boxShadow: msg.sender === 'user' ? 'var(--shadow-sm)' : 'none',
-                whiteSpace: 'pre-line',
-              }}>
+              {/* Message Bubble */}
+              <div
+                style={{
+                  padding: '16px 20px',
+                  borderRadius: 'var(--radius-lg)',
+                  background: msg.sender === 'user' ? 'linear-gradient(135deg, #1b532e 0%, #0d2818 100%)' : 'var(--bg-surface-subtle)',
+                  color: msg.sender === 'user' ? '#ffffff' : 'var(--text-main)',
+                  border: msg.sender === 'user' ? 'none' : '1px solid var(--border-default)',
+                  fontSize: '0.92rem',
+                  lineHeight: 1.6,
+                  boxShadow: msg.sender === 'user' ? '0 3px 8px rgba(13, 40, 24, 0.3)' : 'var(--shadow-xs)',
+                  whiteSpace: 'pre-line',
+                }}
+              >
                 {msg.text}
 
-                {/* Structured Recommendation Pill (if returned by tool) */}
-                {msg.recommendation && msg.recommendation.recommended_irrigation_mm !== undefined && (
+                {/* Structured Recommendation Card */}
+                {msg.recommendation && (
                   <div style={{
-                    marginTop: '12px',
-                    padding: '12px 14px',
+                    marginTop: '16px',
+                    padding: '16px 18px',
                     background: '#ffffff',
                     border: '1px solid var(--color-brand-border)',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.84rem',
+                    borderRadius: 'var(--radius-md)',
                     color: 'var(--text-main)',
+                    boxShadow: 'var(--shadow-xs)'
                   }}>
-                    <div style={{ fontWeight: 700, color: 'var(--color-brand-dark)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <CheckCircle2 size={16} />
-                      Recommended Action: {msg.recommendation.status}
-                    </div>
-                    <div>Recommended Irrigation Depth: <strong>{msg.recommendation.recommended_irrigation_mm} mm</strong></div>
-                  </div>
-                )}
-
-                {/* Collapsible Tool & Security Trace (for judges / technical transparency) */}
-                {msg.tool_trace && msg.tool_trace.length > 0 && (
-                  <div style={{ marginTop: '10px', borderTop: '1px solid var(--border-subtle)', paddingTop: '8px' }}>
-                    <button
-                      onClick={() => toggleTrace(msg.id)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: msg.sender === 'user' ? '#ffffff' : 'var(--text-subtle)',
-                        fontSize: '0.74rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: 0,
-                        fontWeight: 600,
-                      }}
-                    >
-                      <Cpu size={12} />
-                      <span>{expandedTraces[msg.id] ? 'Hide Verification Trace' : `Show Guardrail & Tool Trace (${msg.tool_trace.length} steps)`}</span>
-                      {expandedTraces[msg.id] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                    </button>
-
-                    {expandedTraces[msg.id] && (
-                      <div style={{
-                        marginTop: '8px',
-                        padding: '10px',
-                        background: 'var(--bg-surface-subtle)',
-                        borderRadius: 'var(--radius-sm)',
-                        fontFamily: 'monospace',
-                        fontSize: '0.74rem',
-                        color: 'var(--text-muted)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
-                        border: '1px solid var(--border-subtle)'
-                      }}>
-                        {msg.tool_trace.map((step, idx) => (
-                          <div key={idx} style={{ display: 'flex', gap: '6px' }}>
-                            <span style={{ color: 'var(--color-brand)' }}>[{idx + 1}]</span>
-                            <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{step.tool || step.event}:</span>
-                            <span>{step.summary || step.status || 'OK'}</span>
-                          </div>
-                        ))}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ fontWeight: 800, color: 'var(--color-brand-dark)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.88rem' }}>
+                        <CheckCircle2 size={16} />
+                        {language === 'hindi' ? 'सिंचाई सलाह:' : 'Recommendation:'} {msg.recommendation.status}
                       </div>
-                    )}
+                    </div>
+
+                    <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                      {msg.recommendation.explanation}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                      <div style={{ padding: '8px 12px', background: 'var(--bg-card-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                          {t.depthNeeded || 'Depth'}
+                        </div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-dark)' }}>
+                          {msg.recommendation.recommended_irrigation_mm || 0} mm
+                        </div>
+                      </div>
+
+                      <div style={{ padding: '8px 12px', background: 'var(--bg-card-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                          {t.totalWaterNeeded || 'Volume'}
+                        </div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent-sky-dark)' }}>
+                          {msg.water_analysis?.recommended_water_liters ? `${msg.water_analysis.recommended_water_liters.toLocaleString()} L` : '0 L'}
+                        </div>
+                      </div>
+
+                      <div style={{ padding: '8px 12px', background: 'var(--bg-card-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                          {t.pumpRuntime || 'Runtime'}
+                        </div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent-amber-dark)' }}>
+                          {msg.recommendation.recommended_irrigation_mm === 0 ? '0 h' : `~${(Number(msg.recommendation.recommended_irrigation_mm) * 0.35).toFixed(1)} h`}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -430,43 +533,95 @@ Ask me about:
           ))}
 
           {isLoading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-subtle)', fontSize: '0.84rem' }}>
-              <Bot size={16} className="spin" style={{ color: 'var(--color-brand)' }} />
-              <span>FarmGuard is evaluating field parameters and weather...</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', background: 'var(--bg-card-subtle)', borderRadius: 'var(--radius-md)', alignSelf: 'flex-start' }}>
+              <div className="spinner-sm spin" style={{ width: 18, height: 18, border: '2px solid var(--border-default)', borderTopColor: 'var(--color-brand)', borderRadius: '50%' }} />
+              <span style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {language === 'hindi' ? 'सलाह तैयार की जा रही है...' : language === 'hinglish' ? 'Salah prepare ho rahi hai...' : 'Consulting agricultural models...'}
+              </span>
+              <button
+                type="button"
+                onClick={handleCancel}
+                style={{
+                  marginLeft: '8px',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <X size={12} />
+                <span>{t.cancel || 'Cancel'}</span>
+              </button>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Suggested Farmer Prompts */}
-        <div style={{ padding: '12px 0 8px', display: 'flex', gap: '8px', overflowX: 'auto', flexShrink: 0 }}>
-          {suggestedPrompts.map((p, idx) => (
+        {/* Language Selector Bar */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', padding: '10px 0 6px', borderTop: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Languages size={14} /> {t.language || 'Language'}:
+            </span>
+            {languageOptions.map(opt => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setLanguage(opt.id)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-full)',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  border: languageMode === opt.id ? '1px solid var(--color-brand)' : '1px solid var(--border-default)',
+                  background: languageMode === opt.id ? 'var(--color-brand)' : 'var(--bg-surface-subtle)',
+                  color: languageMode === opt.id ? '#ffffff' : 'var(--text-main)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Quick Suggestion Chips */}
+        <div className="advisor-chips-row" style={{ padding: '0 0 10px', display: 'flex', gap: '8px', overflowX: 'auto', flexShrink: 0 }}>
+          {quickActionPrompts.map((q, idx) => (
             <button
               key={idx}
-              onClick={() => handleSend(p)}
+              type="button"
+              onClick={() => handleSend(q.prompt)}
               disabled={isLoading}
               style={{
                 whiteSpace: 'nowrap',
-                padding: '6px 12px',
+                padding: '7px 14px',
                 background: 'var(--bg-surface-subtle)',
                 border: '1px solid var(--border-default)',
                 borderRadius: 'var(--radius-full)',
                 color: 'var(--text-main)',
-                fontSize: '0.78rem',
-                fontWeight: 600,
+                fontSize: '0.79rem',
+                fontWeight: 700,
                 cursor: 'pointer',
-                transition: 'all 0.15s',
+                transition: 'all 0.15s ease',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--color-brand)';
                 e.currentTarget.style.backgroundColor = 'var(--color-brand-muted)';
+                e.currentTarget.style.color = 'var(--color-brand-dark)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = 'var(--border-default)';
                 e.currentTarget.style.backgroundColor = 'var(--bg-surface-subtle)';
+                e.currentTarget.style.color = 'var(--text-main)';
               }}
             >
-              {p}
+              {q.label}
             </button>
           ))}
         </div>
@@ -476,25 +631,55 @@ Ask me about:
           <input
             type="text"
             className="form-input"
-            placeholder="Ask about irrigation, rain, soil or your crop..."
+            placeholder={
+              languageMode === 'hindi'
+                ? 'फसल, पानी, मौसम, मिट्टी की नमी या ट्यूबवेल पंप के बारे में पूछें...'
+                : (languageMode === 'hinglish'
+                  ? 'Khet me paani, mausam, mitti ki nami ya tubewell pump ke baare me puchein...'
+                  : 'Ask about field water demand, rain forecast, soil moisture, or tubewell pump...')
+            }
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             disabled={isLoading}
-            style={{ flex: 1, padding: '11px 16px', fontSize: '0.92rem' }}
+            style={{ flex: 1, padding: '12px 18px', fontSize: '0.94rem' }}
           />
-          <button
-            className="btn btn-primary"
-            onClick={() => handleSend()}
-            disabled={isLoading || !inputMessage.trim()}
-            style={{ padding: '11px 20px', fontWeight: 700 }}
-          >
-            <Send size={16} />
-            <span>Send</span>
-          </button>
+          {isLoading ? (
+            <button
+              type="button"
+              className="btn"
+              onClick={handleCancel}
+              style={{
+                padding: '12px 20px',
+                fontWeight: 800,
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                color: '#ef4444',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer'
+              }}
+              title="Cancel current request"
+            >
+              <X size={16} />
+              <span>{t.stop || 'Stop'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-action="send-advisor"
+              className="btn btn-primary"
+              onClick={() => handleSend()}
+              disabled={isLoading || !inputMessage.trim()}
+              style={{ padding: '12px 24px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <Send size={16} />
+              <span>{t.send || 'Send'}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
-

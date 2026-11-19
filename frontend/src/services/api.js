@@ -4,7 +4,7 @@
  * Strictly adheres to FAO-56 prototype constants and preserves offline demo usability.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
 
 // ============================================================================
 // CENTRALIZED AGRONOMIC CONSTANTS (EXACT MATCH WITH BACKEND farm_calculator.py)
@@ -76,6 +76,7 @@ const CROP_DATA = {
     ],
   },
 };
+CROP_DATA.paddy = CROP_DATA.rice;
 
 const SOIL_DATA = {
   alluvial: { retention_factor: 1.00, drainage: 'Moderate', description: 'Fertile Gangetic floodplain soil' },
@@ -94,7 +95,7 @@ const SOIL_DATA = {
  */
 export function calculateDeterministicFallback(payload) {
   const cropKey = (payload.crop || 'wheat').toLowerCase().trim();
-  const cropInfo = CROP_DATA[cropKey] || CROP_DATA.wheat;
+  const cropInfo = CROP_DATA[cropKey] || (cropKey.includes('rice') || cropKey.includes('paddy') ? CROP_DATA.rice : CROP_DATA.wheat);
   const soilKey = (payload.soil_type || 'alluvial').toLowerCase().trim();
   const soilInfo = SOIL_DATA[soilKey] || SOIL_DATA.loamy;
 
@@ -182,10 +183,15 @@ export function calculateDeterministicFallback(payload) {
   const pumpHoursSaved = savingsLiters > 0 ? Number((savingsLiters / TUBEWELL_PUMP_DISCHARGE_LPH).toFixed(1)) : 0;
 
   // 3. Stubble Residue & Environmental Footprint
-  const totalResidueTonnes = Number((area * cropInfo.residue_tonnes_per_acre).toFixed(2));
-  const economicPotentialInr = Math.round(totalResidueTonnes * cropInfo.economic_value_inr_per_tonne);
-  const co2eAvoidedKg = Number((totalResidueTonnes * cropInfo.co2_kg_per_tonne_burned).toFixed(1));
-  const pm25AvoidedKg = Number((totalResidueTonnes * cropInfo.pm25_kg_per_tonne_burned).toFixed(2));
+  const residueTonnesPerAcre = cropInfo.residue_tonnes_per_acre ?? 1.9;
+  const economicValueRate = cropInfo.economic_value_inr_per_tonne ?? 1000;
+  const co2Rate = cropInfo.co2_kg_per_tonne_burned ?? 1460;
+  const pm25Rate = cropInfo.pm25_kg_per_tonne_burned ?? 7.5;
+
+  const totalResidueTonnes = Number((area * residueTonnesPerAcre).toFixed(2));
+  const economicPotentialInr = Math.round(totalResidueTonnes * economicValueRate);
+  const co2eAvoidedKg = Number((totalResidueTonnes * co2Rate).toFixed(1));
+  const pm25AvoidedKg = Number((totalResidueTonnes * pm25Rate).toFixed(2));
 
   return {
     farm_input: { ...payload },
@@ -216,7 +222,7 @@ export function calculateDeterministicFallback(payload) {
     },
     environmental_impact: {
       co2e_avoided_kg: co2eAvoidedKg,
-      pm25_avoided_kg: pm25_avoidedKg,
+      pm25_avoided_kg: pm25AvoidedKg,
       water_saved_liters: savingsLiters,
       water_saved_cubic_meters: Number((savingsLiters / 1000).toFixed(2)),
       soil_health_benefit: `In-situ retention of ${totalResidueTonnes} tonnes of ${cropKey} residue replenishes organic carbon and protects topsoil structure.`,
@@ -313,10 +319,116 @@ function generateDeterministicAgentAdviceFallback(payload) {
   const water = calcResult.water_analysis;
   const residue = calcResult.residue_estimate;
 
+  // Determine language preference
+  const langPref = (payload.language || '').toLowerCase();
+  const hasDevanagari = /[\u0900-\u097F]/.test(query);
+  const hinglishMarkers = ['khet', 'paani', 'pani', 'fasal', 'sinchai', 'sichai', 'nami', 'gehun', 'gehu', 'dhaan', 'makka', 'ganna', 'kitna', 'kaise', 'batao', 'chahiye', 'aaj', 'mitti'];
+  const hasHinglish = hinglishMarkers.some(m => query.includes(m));
+
+  let detectedLang = 'english';
+  if (langPref === 'hindi' || (!langPref && hasDevanagari)) {
+    detectedLang = 'hindi';
+  } else if (langPref === 'hinglish' || (!langPref && hasHinglish)) {
+    detectedLang = 'hinglish';
+  }
+
   // Synthesize transparent, grounded advice
   let adviceText = '';
-  if (query.includes('water') || query.includes('paani') || query.includes('irrigation') || query.includes('today')) {
-    adviceText = `### Field Water Decision for ${crop.toUpperCase()} (${area} Acres)
+  const pumpMins = Math.round(water.recommended_water_liters / (28000 / 60));
+  const hours = Math.floor(pumpMins / 60);
+  const mins = pumpMins % 60;
+  const pumpTimeStr = hours > 0 ? `${hours} hr ${mins} min` : `${mins} min`;
+
+  if (detectedLang === 'hindi') {
+    if (query.includes('water') || query.includes('paani') || query.includes('पानी') || query.includes('सिंचाई') || query.includes('आज')) {
+      adviceText = `### फसल सिंचाई निर्णय (${crop.toUpperCase()} — ${area} एकड़)
+
+**सलाह:** ${rec.recommended_irrigation_mm === 0 ? 'अभी सिंचाई रोकें (Wait/Postpone)' : `सिंचाई करें: ${rec.recommended_irrigation_mm} मिमी`}
+* **स्थिति:** ${rec.status} (प्राथमिकता: **${rec.urgency}**)
+* **वर्तमान मिट्टी की नमी:** ${soilMoisture}% (लक्षित नमी: ${CROP_DATA[crop]?.target_moisture_percent || 65}%)
+* **सुझाई गई गहराई:** **${rec.recommended_irrigation_mm} मिमी**
+
+---
+
+### पानी और पंप का प्रभाव
+* **आवश्यक पानी की मात्रा:** ${water.recommended_water_liters.toLocaleString()} लीटर पूरे खेत के लिए।
+* **पानी की बचत:** अधिक सिंचाई से बचकर **${water.water_savings_liters.toLocaleString()} लीटर** (${water.water_savings_percent}%) तक पानी की बचत।
+* **ट्यूबवेल का अनुमानित समय:** लगभग **${pumpTimeStr}** (मानक 5 HP पंप, ~460 ली/मिनट बहाव पर)।
+
+---
+
+### फसल अवशेष एवं मिट्टी सुरक्षा
+* अनुमानित पराली/अवशेष: **${residue.estimated_residue_tonnes} टन**।
+* सलाह: *फसल अवशेष को जलाने के बजाय खेत में ही मल्चिंग या मिट्टी में मिलाना सबसे फायदेमंद है।*
+
+> ℹ️ *सूचना: यह सलाह क्लाइंट-साइड FAO-56 वैज्ञानिक मॉडल द्वारा ऑफलाइन मोड में तैयार की गई है।*`;
+    } else if (query.includes('pump') || query.includes('पंप') || query.includes('समय') || query.includes('घंटे')) {
+      adviceText = `### ट्यूबवेल पंप चलाने का समय
+
+आपके **${area} एकड़** के **${crop}** के खेत के लिए:
+* **सुझाई गई पानी की गहराई:** ${rec.recommended_irrigation_mm} मिमी
+* **कुल पानी की मात्रा:** ${water.recommended_water_liters.toLocaleString()} लीटर
+* **अनुमानित पंप समय (5 HP ट्यूबवेल):** **${pumpTimeStr}** (लगभग 28,000 लीटर/घंटा बहाव पर)।
+
+💡 *कृषि सुझाव: वाष्पीकरण से पानी के नुकसान से बचने के लिए दोपहर की तेज धूप (12 बजे से 3 बजे) में सिंचाई से बचें।*
+
+> ℹ️ *सूचना: क्लाइंट-साइड वैज्ञानिक गणना (ऑफलाइन मोड)।*`;
+    } else {
+      adviceText = `### ${crop.toUpperCase()} के लिए कृषि मार्गदर्शन
+
+1. **मिट्टी की नमी स्थिति:** वर्तमान अनुमानित नमी **${soilMoisture}%** है। फसल की स्वस्थ वृद्धि के लिए इसे ${CROP_DATA[crop]?.critical_moisture_percent}% से ${CROP_DATA[crop]?.target_moisture_percent}% के बीच बनाए रखें।
+2. **वर्तमान पानी की आवश्यकता:** ${rec.recommended_irrigation_mm === 0 ? 'अभी अतिरिक्त पानी की जरूरत नहीं है।' : `लगभग ${rec.recommended_irrigation_mm} मिमी पानी की आवश्यकता है।`}
+3. **मिट्टी पोषण सुझाव:** पराली न जलाएं। खेत में अवशेष रखने से मिट्टी की नमी बनी रहती है और जैविक कार्बन बढ़ता है।
+
+> ℹ️ *सूचना: क्लाइंट-साइड FAO-56 मॉडल द्वारा उत्पन्न सलाह।*`;
+    }
+  } else if (detectedLang === 'hinglish') {
+    if (query.includes('water') || query.includes('paani') || query.includes('pani') || query.includes('sinchai') || query.includes('aaj')) {
+      adviceText = `### Khet Mein Paani Ka Faisla (${crop.toUpperCase()} — ${area} Acres)
+
+**Salah:** ${rec.recommended_irrigation_mm === 0 ? 'Abhi paani rok kar wait karein' : `Sinchai karein: ${rec.recommended_irrigation_mm} mm`}
+* **Status:** ${rec.status} (Urgency: **${rec.urgency}**)
+* **Mitti ki nami:** ${soilMoisture}% (Target: ${CROP_DATA[crop]?.target_moisture_percent || 65}%)
+* **Recommended depth:** **${rec.recommended_irrigation_mm} mm**
+
+---
+
+### Paani Aur Pump Runtime
+* **Zaroori paani:** ${water.recommended_water_liters.toLocaleString()} Litres poore khet ke liye.
+* **Paani ki bachat:** Over-irrigation se bach kar **${water.water_savings_liters.toLocaleString()} Litres** (${water.water_savings_percent}%) paani bachaya ja sakta hai.
+* **Tubewell runtime:** Lagbhag **${pumpTimeStr}** (standard 5 HP tubewell, ~460 L/min flow par).
+
+---
+
+### Fasal Avshesh Aur Mitti Ki Nami
+* Anumanit parali: **${residue.estimated_residue_tonnes} tonnes**.
+* Salah: *Parali jalane ke bajay surface mulching karein taaki mitti ki nami bani rahe.*
+
+> ℹ️ *Note: Yeh salah offline FAO-56 precision model dwara taiyar ki gayi hai.*`;
+    } else if (query.includes('pump') || query.includes('ghante') || query.includes('time') || query.includes('runtime')) {
+      adviceText = `### Tubewell Pump Timing Estimation
+
+Aapke **${area} acres** ke **${crop}** khet ke liye:
+* **Recommended Paani Ki Gehrai:** ${rec.recommended_irrigation_mm} mm
+* **Total Paani:** ${water.recommended_water_liters.toLocaleString()} Litres
+* **Estimated Pump Time (5 HP Standard):** **${pumpTimeStr}** (~28,000 L/hr delivery par).
+
+💡 *Agronomic Tip: Dopehar ki tez dhoop (12 PM - 3 PM) me paani chalane se bachein taaki evaporation loss kam ho.*
+
+> ℹ️ *Note: Client-side calculation (backend offline mode).*`;
+    } else {
+      adviceText = `### ${crop.toUpperCase()} Ke Liye Agricultural Guidance
+
+1. **Mitti Ki Nami:** Current moisture **${soilMoisture}%** hai. Isko ${CROP_DATA[crop]?.critical_moisture_percent}% se ${CROP_DATA[crop]?.target_moisture_percent}% ke beech maintain karein.
+2. **Paani Ki Zaroorat:** ${rec.recommended_irrigation_mm === 0 ? 'Abhi paani dene ki zaroorat nahi hai.' : `Lagbhag ${rec.recommended_irrigation_mm} mm paani require hai.`}
+3. **Residue Tip:** Parali ko mat jalayein. Khet me mulch karne se mitti ki nami aur organic carbon dono improve hote hain.
+
+> ℹ️ *Note: Client-side FAO-56 decision model (offline demo mode).*`;
+    }
+  } else {
+    // English
+    if (query.includes('water') || query.includes('paani') || query.includes('irrigation') || query.includes('today')) {
+      adviceText = `### Field Water Decision for ${crop.toUpperCase()} (${area} Acres)
 
 **Recommendation:** ${rec.action}
 * **Status:** ${rec.status} (Urgency: **${rec.urgency}**)
@@ -328,7 +440,7 @@ function generateDeterministicAgentAdviceFallback(payload) {
 ### Water & Pump Impact
 * **Target Water Volume:** ${water.recommended_water_liters.toLocaleString()} Liters across your field.
 * **Potential Conservation:** Conserves up to **${water.water_savings_liters.toLocaleString()} Liters** (${water.water_savings_percent}%) compared to uncalibrated over-flooding.
-* **Tubewell Runtime:** Estimated at **${(water.recommended_water_liters / (28000 / 60)).toFixed(0)} minutes** on a standard 5 HP pump (~460 L/min).
+* **Tubewell Runtime:** Estimated at **${pumpTimeStr}** on a standard 5 HP pump (~460 L/min).
 
 ---
 
@@ -337,28 +449,26 @@ function generateDeterministicAgentAdviceFallback(payload) {
 * Practice: *${residue.recommended_practices[0]}*.
 
 > ℹ️ *Note: This response was generated deterministically by the client-side decision model (FAO-56 constants) because the live backend server is offline.*`;
-  } else if (query.includes('pump') || query.includes('hour') || query.includes('time')) {
-    const pumpMins = Math.round(water.recommended_water_liters / (28000 / 60));
-    const hours = Math.floor(pumpMins / 60);
-    const mins = pumpMins % 60;
-    adviceText = `### Tubewell Pump Timing Estimation
+    } else if (query.includes('pump') || query.includes('hour') || query.includes('time')) {
+      adviceText = `### Tubewell Pump Timing Estimation
 
 Based on your field size of **${area} acres** of **${crop}**:
 * **Recommended Water Depth:** ${rec.recommended_irrigation_mm} mm
 * **Total Water Volume:** ${water.recommended_water_liters.toLocaleString()} Liters
-* **Estimated Pump Time (5 HP Standard):** **${hours > 0 ? `${hours} hr ` : ''}${mins} min** (at ~28,000 L/hr discharge).
+* **Estimated Pump Time (5 HP Standard):** **${pumpTimeStr}** (at ~28,000 L/hr discharge).
 
 💡 *Agronomic Tip: Avoid running your pump during peak midday hours (12 PM - 3 PM) to prevent evaporative losses.*
 
 > ℹ️ *Note: Client-side calculation estimate (backend offline).*`;
-  } else {
-    adviceText = `### Agricultural Guidance for ${crop.toUpperCase()}
+    } else {
+      adviceText = `### Agricultural Guidance for ${crop.toUpperCase()}
 
 1. **Soil Moisture Status:** Current estimated moisture is **${soilMoisture}%**. Maintain moisture between ${CROP_DATA[crop]?.critical_moisture_percent}% and ${CROP_DATA[crop]?.target_moisture_percent}%.
 2. **Current Water Need:** ${rec.action}
 3. **Field Residue Tip:** Avoid burning stubble. In-situ retention can conserve essential topsoil nutrients and save valuable irrigation moisture.
 
 > ℹ️ *Note: Deterministic client advice generated in offline demo mode.*`;
+    }
   }
 
   return {
@@ -366,6 +476,7 @@ Based on your field size of **${area} acres** of **${crop}**:
     recommendation: rec,
     water_analysis: water,
     environmental_impact: calcResult.environmental_impact,
+    detected_language: detectedLang,
     tool_trace: [
       { tool: 'input_guardrails', status: 'passed' },
       { tool: 'fao56_crop_calculator', status: 'executed', crop, recommended_mm: rec.recommended_irrigation_mm },
@@ -381,13 +492,13 @@ Based on your field size of **${area} acres** of **${crop}**:
   };
 }
 
-// Track backend availability to prevent proxy timeout lags during offline demo
-let isBackendAvailable = null;
+// Track backend availability
+let isBackendAvailable = true;
 
 export async function checkHealth() {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(`${API_BASE_URL}/health`, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -401,12 +512,9 @@ export async function checkHealth() {
 }
 
 export async function checkReady() {
-  if (isBackendAvailable === false) {
-    return { status: 'offline', mode: 'demo_fallback' };
-  }
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(`${API_BASE_URL}/ready`, { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -417,7 +525,6 @@ export async function checkReady() {
 }
 
 export async function getMetrics() {
-  if (isBackendAvailable === false) return null;
   try {
     const res = await fetch(`${API_BASE_URL}/metrics`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -427,66 +534,257 @@ export async function getMetrics() {
   }
 }
 
-export async function analyzeFarm(payload) {
-  // If backend is known to be offline, serve client-side deterministic math instantly
-  if (isBackendAvailable === false) {
-    return calculateDeterministicFallback(payload);
+export async function analyzeFarm(payload, options = {}) {
+  const callerSignal = options.signal;
+  if (callerSignal?.aborted) {
+    const err = new Error('Request was aborted by user');
+    err.name = 'AbortError';
+    throw err;
+  }
+
+  const timeoutMs = options.timeout || 12000;
+  const internalController = new AbortController();
+  const timeoutId = setTimeout(() => internalController.abort(new Error('Timeout')), timeoutMs);
+
+  const onCallerAbort = () => internalController.abort(callerSignal.reason);
+  if (callerSignal) {
+    callerSignal.addEventListener('abort', onCallerAbort, { once: true });
   }
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    let res = null;
+    let attempt = 0;
+    while (attempt < 2) {
+      attempt++;
+      try {
+        res = await fetch(`${API_BASE_URL}/api/v1/farm/analyze`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: internalController.signal,
+        });
 
-    const res = await fetch(`${API_BASE_URL}/api/v1/farm/analyze`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
+        if (res.ok) {
+          isBackendAvailable = true;
+          return await res.json();
+        }
 
-    if (res.ok) {
-      isBackendAvailable = true;
-      return await res.json();
+        if ([502, 503, 504].includes(res.status) && attempt < 2 && !internalController.signal.aborted) {
+          await new Promise(r => setTimeout(r, 600));
+          continue;
+        }
+        break;
+      } catch (networkErr) {
+        if (callerSignal?.aborted) {
+          throw networkErr;
+        }
+        if (attempt < 2 && !internalController.signal.aborted) {
+          await new Promise(r => setTimeout(r, 600));
+          continue;
+        }
+        break;
+      }
     }
-    isBackendAvailable = false;
+
+    if (callerSignal?.aborted) {
+      const err = new Error('Request was aborted by user');
+      err.name = 'AbortError';
+      throw err;
+    }
+
     return calculateDeterministicFallback(payload);
-  } catch (err) {
-    isBackendAvailable = false;
-    return calculateDeterministicFallback(payload);
+  } finally {
+    clearTimeout(timeoutId);
+    if (callerSignal) {
+      callerSignal.removeEventListener('abort', onCallerAbort);
+    }
   }
 }
 
-export async function getAgentAdvice(payload) {
-  // If backend is known to be offline, serve client-side deterministic advisory instantly
-  if (isBackendAvailable === false) {
-    return generateDeterministicAgentAdviceFallback(payload);
+export async function getAgentAdvice(payload, options = {}) {
+  const callerSignal = options.signal;
+  if (callerSignal?.aborted) {
+    const err = new Error('Request was aborted by user');
+    err.name = 'AbortError';
+    throw err;
+  }
+
+  const timeoutMs = options.timeout || 15000;
+  const internalController = new AbortController();
+  const timeoutId = setTimeout(() => internalController.abort(new Error('Timeout')), timeoutMs);
+
+  const onCallerAbort = () => internalController.abort(callerSignal.reason);
+  if (callerSignal) {
+    callerSignal.addEventListener('abort', onCallerAbort, { once: true });
   }
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1800);
+    let res = null;
+    let attempt = 0;
+    while (attempt < 2) {
+      attempt++;
+      try {
+        res = await fetch(`${API_BASE_URL}/api/v1/agent/advice`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: internalController.signal,
+        });
 
-    const res = await fetch(`${API_BASE_URL}/api/v1/agent/advice`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+        if (res.ok) {
+          isBackendAvailable = true;
+          return await res.json();
+        }
+
+        if ([502, 503, 504].includes(res.status) && attempt < 2 && !internalController.signal.aborted) {
+          await new Promise(r => setTimeout(r, 600));
+          continue;
+        }
+        break;
+      } catch (networkErr) {
+        if (callerSignal?.aborted) {
+          throw networkErr;
+        }
+        if (attempt < 2 && !internalController.signal.aborted) {
+          await new Promise(r => setTimeout(r, 600));
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (callerSignal?.aborted) {
+      const err = new Error('Request was aborted by user');
+      err.name = 'AbortError';
+      throw err;
+    }
+
+    return generateDeterministicAgentAdviceFallback(payload);
+  } finally {
     clearTimeout(timeoutId);
+    if (callerSignal) {
+      callerSignal.removeEventListener('abort', onCallerAbort);
+    }
+  }
+}
 
+// ============================================================================
+// PERSISTENT FARMS & GEOLOCATION API CLIENT
+// ============================================================================
+
+export async function fetchFarms() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/farms`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : null;
+  } catch (err) {
+    console.warn('Backend fetchFarms failed, falling back to local storage:', err.message);
+    return null;
+  }
+}
+
+export async function saveFarmApi(farmData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/farms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(farmData),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('Backend saveFarmApi failed:', err.message);
+    return null;
+  }
+}
+
+export async function updateFarmApi(farmId, farmData) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/farms/${farmId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(farmData),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn(`Backend updateFarmApi failed for ${farmId}:`, err.message);
+    return null;
+  }
+}
+
+export async function deleteFarmApi(farmId) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/farms/${farmId}`, {
+      method: 'DELETE',
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn(`Backend deleteFarmApi failed for ${farmId}:`, err.message);
+    return false;
+  }
+}
+
+export async function resetFarmsApi() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/farms/reset`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('Backend resetFarmsApi failed:', err.message);
+    return null;
+  }
+}
+
+export async function fetchWeatherForecastApi(location, lat = null, lon = null) {
+  try {
+    const params = new URLSearchParams();
+    if (location) params.append('location', location);
+    if (lat !== null && lat !== undefined && !isNaN(lat)) params.append('latitude', lat);
+    if (lon !== null && lon !== undefined && !isNaN(lon)) params.append('longitude', lon);
+
+    const res = await fetch(`${API_BASE_URL}/api/v1/weather/forecast?${params.toString()}`);
     if (res.ok) {
-      isBackendAvailable = true;
       return await res.json();
     }
-    isBackendAvailable = false;
-    return generateDeterministicAgentAdviceFallback(payload);
   } catch (err) {
-    isBackendAvailable = false;
-    return generateDeterministicAgentAdviceFallback(payload);
+    console.warn('Backend weather endpoint failed, attempting direct Open-Meteo fallback:', err.message);
+  }
+
+  // Fallback to direct client-side Open-Meteo call
+  try {
+    const queryLat = lat || 26.8524;
+    const queryLon = lon || 80.9412;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${queryLat}&longitude=${queryLon}&daily=precipitation_sum,precipitation_probability_max&timezone=Asia%2FKolkata`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
+    const data = await res.json();
+    const daily = data.daily || {};
+    const rainSum = daily.precipitation_sum?.[0] ?? 0.0;
+    const rainProb = (daily.precipitation_probability_max?.[0] ?? 0) / 100.0;
+    return {
+      location: location || 'Uttar Pradesh',
+      latitude: queryLat,
+      longitude: queryLon,
+      forecast_rainfall_mm: rainSum,
+      rainfall_probability: rainProb,
+      source: 'Open-Meteo (Direct)',
+      status: 'available',
+    };
+  } catch (fallbackErr) {
+    return {
+      location: location || 'Uttar Pradesh',
+      forecast_rainfall_mm: 0.0,
+      rainfall_probability: 0.15,
+      source: 'offline-estimate',
+      status: 'unavailable',
+    };
   }
 }

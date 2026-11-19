@@ -69,6 +69,10 @@ class FarmInput(BaseModel):
         le=100.0,
         description="Current soil moisture level in percentage (0.0 to 100.0%)"
     )
+    latitude: Optional[float] = Field(None, ge=-90.0, le=90.0, description="Latitude coordinate")
+    longitude: Optional[float] = Field(None, ge=-180.0, le=180.0, description="Longitude coordinate")
+    gps_accuracy: Optional[float] = Field(None, ge=0.0, description="GPS accuracy in meters")
+    boundary_coordinates: Optional[List[List[float]]] = Field(None, description="Boundary polygon [[lat, lng], ...]")
 
     @field_validator("crop")
     @classmethod
@@ -206,6 +210,10 @@ class AgentAdviceRequest(BaseModel):
     """Input payload for Gemini advisory agent."""
     message: Optional[str] = Field(None, description="Natural language question or farmer prompt")
     farm: Optional[Dict[str, Any]] = Field(None, description="Structured farm parameters if available")
+    language: Optional[str] = Field("auto", description="Preferred language: 'auto', 'hinglish', 'hindi', 'english'")
+    history: Optional[List[Dict[str, str]]] = Field(default_factory=list, description="Recent conversation turns [{'role': 'user'|'assistant', 'content': '...'}]")
+    crop_stage: Optional[str] = Field(None, description="Current growth stage: e.g. 'crown_root', 'tillering', 'flowering'")
+    sowing_date: Optional[str] = Field(None, description="Date or days since sowing")
 
 
 class AgentAdviceResponse(BaseModel):
@@ -220,3 +228,79 @@ class AgentAdviceResponse(BaseModel):
     evaluation: Optional[Dict[str, Any]] = Field(None, description="Deterministic LLM evaluation metrics summary")
     blocked: Optional[bool] = Field(None, description="True if input was rejected by security guardrails")
     block_reason: Optional[str] = Field(None, description="Reason code if blocked by security guardrails")
+    detected_language: Optional[str] = Field(None, description="Detected or applied language: 'hindi', 'hinglish', 'english'")
+
+
+class FarmModel(BaseModel):
+    """Full persisted farm model with GPS geolocation and boundary polygon."""
+    id: str
+    name: str
+    crop: str = "wheat"
+    area_acres: float = 2.0
+    area_hectares: Optional[float] = None
+    soil_type: str = "alluvial"
+    current_irrigation_mm: float = 35.0
+    location: str = "Uttar Pradesh"
+    rainfall_probability: float = 15.0
+    forecast_rainfall_mm: float = 0.0
+    soil_moisture_percent: float = 58.0
+    pump_flow_lpm: Optional[float] = 460.0
+    pump_hp: Optional[float] = 5.0
+    electricity_tariff: Optional[float] = 6.0
+    sowing_date: Optional[str] = None
+    notes: Optional[str] = ""
+    # Geolocation & Mapping fields
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    gps_accuracy: Optional[float] = None
+    location_captured_at: Optional[str] = None
+    location_source: Optional[str] = "default"  # 'gps', 'manual', 'default'
+    boundary_coordinates: Optional[List[List[float]]] = None
+
+
+class FarmCreateRequest(BaseModel):
+    name: str
+    crop: str = "wheat"
+    area_acres: float = 2.0
+    area_hectares: Optional[float] = None
+    soil_type: str = "alluvial"
+    current_irrigation_mm: float = 35.0
+    location: str = "Uttar Pradesh"
+    rainfall_probability: Optional[float] = 15.0
+    forecast_rainfall_mm: Optional[float] = 0.0
+    soil_moisture_percent: Optional[float] = 55.0
+    pump_flow_lpm: Optional[float] = 460.0
+    pump_hp: Optional[float] = 5.0
+    electricity_tariff: Optional[float] = 6.0
+    sowing_date: Optional[str] = None
+    notes: Optional[str] = ""
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    gps_accuracy: Optional[float] = None
+    location_captured_at: Optional[str] = None
+    location_source: Optional[str] = "manual"
+    boundary_coordinates: Optional[List[List[float]]] = None
+
+
+class FarmUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    crop: Optional[str] = None
+    area_acres: Optional[float] = None
+    area_hectares: Optional[float] = None
+    soil_type: Optional[str] = None
+    current_irrigation_mm: Optional[float] = None
+    location: Optional[str] = None
+    rainfall_probability: Optional[float] = None
+    forecast_rainfall_mm: Optional[float] = None
+    soil_moisture_percent: Optional[float] = None
+    pump_flow_lpm: Optional[float] = None
+    pump_hp: Optional[float] = None
+    electricity_tariff: Optional[float] = None
+    sowing_date: Optional[str] = None
+    notes: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    gps_accuracy: Optional[float] = None
+    location_captured_at: Optional[str] = None
+    location_source: Optional[str] = None
+    boundary_coordinates: Optional[List[List[float]]] = None

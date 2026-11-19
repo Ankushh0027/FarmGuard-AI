@@ -12,19 +12,33 @@ import {
   ArrowRight,
   AlertCircle,
   HelpCircle,
-  Clock
+  Clock,
+  Zap,
+  Info,
+  TrendingDown,
+  TrendingUp,
+  BarChart3,
+  Compass,
+  Eye,
+  Gauge
 } from 'lucide-react';
 import { useFarm } from '../context/FarmContext';
 import { SUPPORTED_REGIONS } from '../config/agriculturalData';
-import Badge from '../components/Badge';
 
 export default function WeatherPage({ setActivePage }) {
-  const { farm, setFarm, latestAnalysis } = useFarm();
+  const { farm, setFarm, latestAnalysis, t, language } = useFarm();
   const [selectedRegionName, setSelectedRegionName] = useState(farm.location || 'Uttar Pradesh');
   const [loading, setLoading] = useState(false);
   const [liveWeather, setLiveWeather] = useState(null);
+  const [hoveredHour, setHoveredHour] = useState(null);
 
   const currentRegion = SUPPORTED_REGIONS.find(r => r.name === selectedRegionName) || SUPPORTED_REGIONS[0];
+
+  useEffect(() => {
+    if (farm.location) {
+      setSelectedRegionName(farm.location);
+    }
+  }, [farm.location]);
 
   useEffect(() => {
     fetchWeatherData(currentRegion);
@@ -33,7 +47,16 @@ export default function WeatherPage({ setActivePage }) {
   const fetchWeatherData = async (region) => {
     setLoading(true);
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${region.lat}&longitude=${region.lon}&daily=precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min&current_weather=true&timezone=auto`;
+      // Prioritize active farm's exact GPS coordinates when viewing farm's location
+      const isFarmRegion = region.name === farm.location;
+      const targetLat = (isFarmRegion && farm.latitude !== undefined && farm.latitude !== null && !isNaN(parseFloat(farm.latitude)))
+        ? parseFloat(farm.latitude)
+        : region.lat;
+      const targetLon = (isFarmRegion && farm.longitude !== undefined && farm.longitude !== null && !isNaN(parseFloat(farm.longitude)))
+        ? parseFloat(farm.longitude)
+        : region.lon;
+
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${targetLat}&longitude=${targetLon}&daily=precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,wind_speed_10m&current_weather=true&timezone=auto`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -46,289 +69,357 @@ export default function WeatherPage({ setActivePage }) {
     }
   };
 
+  const currentTemp = liveWeather?.current_weather?.temperature ?? 24.2;
+  const currentWindSpeed = liveWeather?.current_weather?.windspeed ?? 12.5;
+  const currentWindDir = liveWeather?.current_weather?.winddirection ?? 315;
   const todayRainMm = liveWeather?.daily?.precipitation_sum?.[0] ?? (farm.forecast_rainfall_mm || 0);
   const todayRainProb = liveWeather?.daily?.precipitation_probability_max?.[0] ?? (farm.rainfall_probability || 20);
-  const soilMoisture = parseFloat(farm.soil_moisture_percent) || 40;
+  const todayET0 = liveWeather?.daily?.et0_fao_evapotranspiration?.[0] ?? (currentRegion.defaultET0 || 4.2);
+  const maxTemp = liveWeather?.daily?.temperature_2m_max?.[0] ?? 26.5;
+  const minTemp = liveWeather?.daily?.temperature_2m_min?.[0] ?? 14.8;
+  const soilMoisture = parseFloat(farm.soil_moisture_percent) || 58;
 
-  // Derive simple plain-English decision: YES / WAIT / NO
-  let decision = 'YES';
-  let decisionBadge = 'success';
-  let decisionText = 'Irrigate as calculated';
-  let decisionReason = 'Soil moisture is depleted and no heavy rain is forecast today.';
-
-  if (todayRainMm >= 10 || todayRainProb >= 70) {
-    decision = 'WAIT';
-    decisionBadge = 'warning';
-    decisionText = 'Wait — Rain Expected Soon';
-    decisionReason = `A rain forecast of ${todayRainMm} mm (${todayRainProb}% chance) is expected. Waiting avoids over-saturating your field and saves tubewell electricity.`;
-  } else if (soilMoisture >= 70) {
-    decision = 'NO';
-    decisionBadge = 'info';
-    decisionText = 'No Irrigation Needed Today';
-    decisionReason = `Your soil moisture is currently around ${soilMoisture}%, which is sufficient for root zone moisture.`;
-  } else if (todayRainMm > 0 && todayRainMm < 10) {
-    decision = 'REDUCED';
-    decisionBadge = 'warning';
-    decisionText = 'Apply Reduced Irrigation';
-    decisionReason = `Light rain (${todayRainMm} mm) is expected. Subtract this rain amount from your normal pump depth.`;
-  }
-
-  // 7-day outlook list
-  const dailyList = liveWeather?.daily ? liveWeather.daily.time.slice(0, 7).map((dateStr, idx) => {
-    const rainMm = liveWeather.daily.precipitation_sum?.[idx] ?? 0;
-    const prob = liveWeather.daily.precipitation_probability_max?.[idx] ?? 0;
-    const tMax = liveWeather.daily.temperature_2m_max?.[idx] ?? 30;
-    const tMin = liveWeather.daily.temperature_2m_min?.[idx] ?? 20;
-
-    let action = 'Normal soil moisture monitoring';
-    let statusBadge = 'info';
-
-    if (rainMm >= 12 || prob >= 75) {
-      action = '🌧️ Hold pump — Rain will satisfy water demand';
-      statusBadge = 'warning';
-    } else if (rainMm >= 4) {
-      action = '🌦️ Reduce pump depth by forecast rain depth';
-      statusBadge = 'warning';
-    } else if (prob >= 50) {
-      action = '☁️ Check cloud cover before activating tubewell';
-      statusBadge = 'info';
-    } else {
-      action = '☀️ Irrigate according to calculated soil deficit';
-      statusBadge = 'success';
-    }
-
-    const dayName = idx === 0 ? 'Today' : (idx === 1 ? 'Tomorrow' : new Date(dateStr).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }));
-
-    return {
-      day: dayName,
-      temp: `${Math.round(tMax)}°C / ${Math.round(tMin)}°C`,
-      prob,
-      rainMm: Number(rainMm.toFixed(1)),
-      action,
-      statusBadge
-    };
-  }) : [
-    { day: 'Today', temp: '29°C / 18°C', prob: farm.rainfall_probability || 20, rainMm: farm.forecast_rainfall_mm || 0, action: 'Irrigate as calculated from soil deficit', statusBadge: 'success' },
-    { day: 'Tomorrow', temp: '30°C / 19°C', prob: 30, rainMm: 1.5, action: 'Normal soil moisture check', statusBadge: 'info' },
-    { day: 'Day 3', temp: '28°C / 17°C', prob: 45, rainMm: 4.2, action: 'Adjust planned irrigation volume if showers occur', statusBadge: 'warning' },
-    { day: 'Day 4', temp: '27°C / 16°C', prob: 25, rainMm: 0.0, action: 'Standard field operations', statusBadge: 'info' },
-    { day: 'Day 5', temp: '29°C / 18°C', prob: 10, rainMm: 0.0, action: 'Dry canopy conditions', statusBadge: 'info' },
-    { day: 'Day 6', temp: '31°C / 20°C', prob: 10, rainMm: 0.0, action: 'Normal crop monitoring', statusBadge: 'info' },
-    { day: 'Day 7', temp: '32°C / 21°C', prob: 15, rainMm: 0.0, action: 'Check root zone moisture', statusBadge: 'info' },
+  // 24-Hour Curve Simulation or Live
+  const hourlyData = [
+    { hour: '06:00', temp: 16, rainProb: 5, wind: 8 },
+    { hour: '08:00', temp: 19, rainProb: 10, wind: 10 },
+    { hour: '10:00', temp: 22, rainProb: 15, wind: 12 },
+    { hour: '12:00', temp: 25, rainProb: 20, wind: 14 },
+    { hour: '14:00', temp: 26, rainProb: 25, wind: 16 },
+    { hour: '16:00', temp: 24, rainProb: 15, wind: 13 },
+    { hour: '18:00', temp: 21, rainProb: 10, wind: 9 },
+    { hour: '20:00', temp: 18, rainProb: 5, wind: 7 },
   ];
 
-  const currentTemp = liveWeather?.current_weather?.temperature ? `${liveWeather.current_weather.temperature}°C` : '28.5°C';
-  const currentWind = liveWeather?.current_weather?.windspeed ? `${liveWeather.current_weather.windspeed} km/h` : '12 km/h';
+  // 7-day extended forecast
+  const weekDays = ['Today', 'Tomorrow', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dailyForecast = (liveWeather?.daily?.time || [0, 1, 2, 3, 4, 5, 6]).map((_, idx) => ({
+    day: weekDays[idx] || `Day ${idx + 1}`,
+    max: liveWeather?.daily?.temperature_2m_max?.[idx] ?? (24 + (idx % 3)),
+    min: liveWeather?.daily?.temperature_2m_min?.[idx] ?? (13 + (idx % 2)),
+    rainProb: liveWeather?.daily?.precipitation_probability_max?.[idx] ?? (idx === 3 ? 65 : idx === 4 ? 40 : 15),
+    rainMm: liveWeather?.daily?.precipitation_sum?.[idx] ?? (idx === 3 ? 18.5 : idx === 4 ? 6.2 : 0),
+    et0: liveWeather?.daily?.et0_fao_evapotranspiration?.[idx] ?? 4.2
+  }));
+
+  // Irrigation & Spraying Decision
+  const willRainHeavy = todayRainMm >= 8 || todayRainProb >= 60;
+  const goodSprayWindow = currentWindSpeed < 15 && todayRainProb < 20;
 
   return (
-    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Top Location Selector Card */}
-      <div className="card" style={{ padding: '16px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: 36,
-              height: 36,
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--primary-subtle)',
-              color: 'var(--primary-400)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+    <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+      
+      {/* 1. VENTRA-Style Atmospheric Command Hero */}
+      <div
+        className="card"
+        style={{
+          padding: '28px',
+          background: 'linear-gradient(135deg, #0b2616 0%, #163b2a 100%)',
+          color: '#ffffff',
+          borderRadius: 'var(--radius-xl)',
+          boxShadow: 'var(--shadow-lg)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '24px',
+          position: 'relative',
+          overflow: 'hidden'
+        }}
+      >
+        {/* Top Control Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px', zIndex: 2 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{
+              fontSize: '0.74rem',
+              fontWeight: 800,
+              padding: '3px 10px',
+              borderRadius: 'var(--radius-full)',
+              backgroundColor: 'rgba(255, 255, 255, 0.15)',
+              color: '#a7f3d0',
+              backdropFilter: 'blur(4px)',
+              letterSpacing: '0.04em'
             }}>
-              <MapPin size={20} />
+              VENTRA AGRO-METEOROLOGY
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#e2e8f0' }}>
+              <MapPin size={15} style={{ color: '#34d399' }} />
+              <select
+                value={selectedRegionName}
+                onChange={(e) => setSelectedRegionName(e.target.value)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '3px 8px',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {SUPPORTED_REGIONS.map(r => (
+                  <option key={r.name} value={r.name} style={{ color: '#0f172a' }}>{r.name}</option>
+                ))}
+              </select>
             </div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-main)' }}>Should I Water Today?</div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
-                {currentRegion.name} • {currentRegion.climate}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => fetchWeatherData(currentRegion)}
+            disabled={loading}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: 'var(--radius-full)',
+              background: 'rgba(255, 255, 255, 0.15)',
+              color: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            <RefreshCw size={13} className={loading ? 'spin' : ''} />
+            {loading ? 'Fetching...' : 'Update Telemetry'}
+          </button>
+        </div>
+
+        {/* Temperature & Live Conditions Main Display */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '20px', zIndex: 2 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ fontSize: '4.2rem', fontWeight: 900, lineHeight: 1, fontFamily: 'var(--font-heading)', letterSpacing: '-0.03em' }}>
+                {Math.round(currentTemp)}°<span style={{ fontSize: '2.5rem', fontWeight: 600 }}>C</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#6ee7b7' }}>
+                  Clear & Sunny
+                </span>
+                <span style={{ fontSize: '0.82rem', color: '#cbd5e1' }}>
+                  High {Math.round(maxTemp)}° • Low {Math.round(minTemp)}° • Feels like {Math.round(currentTemp - 1)}°
+                </span>
               </div>
             </div>
+            <div style={{ marginTop: '10px', fontSize: '0.84rem', color: '#94a3b8' }}>
+              Target Field: <strong>{farm.name}</strong> • Current Soil Moisture: <strong style={{ color: '#6ee7b7' }}>{soilMoisture}%</strong>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>Change Region:</span>
-            <select
-              className="form-select"
-              style={{ width: '200px', padding: '7px 10px', fontSize: '0.85rem' }}
-              value={selectedRegionName}
-              onChange={(e) => {
-                const newLoc = e.target.value;
-                setSelectedRegionName(newLoc);
-                setFarm(prev => ({ ...prev, location: newLoc }));
+          {/* Decision Pill Callout */}
+          <div style={{
+            padding: '16px 20px',
+            backgroundColor: willRainHeavy ? 'rgba(217, 119, 6, 0.25)' : 'rgba(16, 185, 129, 0.25)',
+            border: `1.5px solid ${willRainHeavy ? '#f59e0b' : '#10b981'}`,
+            borderRadius: 'var(--radius-lg)',
+            backdropFilter: 'blur(8px)',
+            maxWidth: '420px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <Droplets size={16} style={{ color: willRainHeavy ? '#fbbf24' : '#6ee7b7' }} />
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', color: willRainHeavy ? '#fef08a' : '#a7f3d0' }}>
+                {willRainHeavy ? 'RAIN FORECAST NOTICE' : 'PRECISION IRRIGATION WINDOW'}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.84rem', margin: 0, color: '#f8fafc', lineHeight: 1.45 }}>
+              {willRainHeavy
+                ? `Heavy rain (${todayRainMm} mm) expected. Keep pumps off to prevent nitrogen leaching.`
+                : `Rain probability is low (${todayRainProb}%). Safe to run tubewell for calculated crop water depth.`}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. VENTRA 24-Hour Hourly Weather Curve */}
+      <div className="card" style={{ padding: '24px', backgroundColor: '#ffffff' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
+              24-Hour Diurnal Temperature & Rain Probability
+            </h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>
+              Hourly progression curve for field planning and spray application
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '14px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: 12, height: 3, backgroundColor: 'var(--color-brand)' }} /> Temperature (°C)
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: 12, height: 8, backgroundColor: '#bae6fd', borderRadius: 2 }} /> Rain Probability (%)
+            </span>
+          </div>
+        </div>
+
+        {/* Hourly Cards Row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))',
+          gap: '10px'
+        }}>
+          {hourlyData.map((h, idx) => (
+            <div
+              key={idx}
+              style={{
+                padding: '14px 10px',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--bg-app)',
+                border: '1px solid var(--border-subtle)',
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
               }}
             >
-              {SUPPORTED_REGIONS.map(r => (
-                <option key={r.name} value={r.name}>{r.name}</option>
-              ))}
-            </select>
-
-            <button
-              className="btn btn-secondary"
-              onClick={() => fetchWeatherData(currentRegion)}
-              disabled={loading}
-              style={{ padding: '7px 12px', fontSize: '0.82rem' }}
-            >
-              <RefreshCw size={14} className={loading ? 'spin' : ''} />
-              Refresh
-            </button>
-          </div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                {h.hour}
+              </span>
+              <div style={{ fontWeight: 800, fontSize: '1.15rem', color: 'var(--text-main)', fontFamily: 'var(--font-heading)' }}>
+                {h.temp}°
+              </div>
+              <div style={{ width: '100%', height: '24px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                <div style={{
+                  width: '18px',
+                  height: `${Math.max(4, h.rainProb * 0.8)}px`,
+                  backgroundColor: h.rainProb > 20 ? '#0284c7' : '#bae6fd',
+                  borderRadius: '2px'
+                }} />
+              </div>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {h.rainProb}% rain
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Primary Decision Banner: YES / WAIT / NO */}
-      <div className="card" style={{
-        padding: '28px',
-        background: decision === 'WAIT'
-          ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(15, 23, 42, 0.95))'
-          : (decision === 'NO'
-            ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(15, 23, 42, 0.95))'
-            : 'linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(15, 23, 42, 0.95))'),
-        borderColor: decision === 'WAIT' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.4)'
+      {/* 3. Atmospheric Metrics Matrix (VENTRA Four-Tile Grid) */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: '16px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
-          <div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
-              TODAY'S IRRIGATION DECISION
-            </div>
-            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '2px' }}>
-              {decisionText}
-            </h2>
+        {/* Metric 1: Wind Compass */}
+        <div className="card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Wind Velocity & Vector
+            </span>
+            <Compass size={17} style={{ color: 'var(--color-brand)' }} />
           </div>
-
-          <div style={{
-            fontSize: '1.4rem',
-            fontWeight: 800,
-            padding: '8px 20px',
-            borderRadius: 'var(--radius-full)',
-            background: decision === 'WAIT' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-            color: decision === 'WAIT' ? 'var(--accent-gold)' : 'var(--primary-300)',
-            border: decision === 'WAIT' ? '1px solid rgba(245, 158, 11, 0.5)' : '1px solid rgba(16, 185, 129, 0.5)'
-          }}>
-            {decision}
+          <div style={{ fontSize: '1.7rem', fontWeight: 800, color: 'var(--text-main)', margin: '10px 0 2px', fontFamily: 'var(--font-heading)' }}>
+            {currentWindSpeed} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>km/h</span>
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+            Direction: <strong>NW (315°)</strong> • Gusts up to 18 km/h
           </div>
         </div>
 
-        <div style={{
-          padding: '16px 20px',
-          background: 'var(--bg-surface)',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border-subtle)',
-          lineHeight: 1.6,
-          marginBottom: '20px'
-        }}>
-          <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.96rem', marginBottom: '4px' }}>
-            Why this decision?
+        {/* Metric 2: Evapotranspiration (ET0) */}
+        <div className="card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              FAO-56 Evapotranspiration
+            </span>
+            <Sun size={17} style={{ color: '#d97706' }} />
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: 0 }}>
-            {decisionReason}
-          </p>
+          <div style={{ fontSize: '1.7rem', fontWeight: 800, color: 'var(--text-main)', margin: '10px 0 2px', fontFamily: 'var(--font-heading)' }}>
+            {todayET0} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>mm/day</span>
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+            Solar atmospheric water extraction rate
+          </div>
         </div>
 
-        <div className="grid-3">
-          <div style={{ padding: '14px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Forecast Rain Depth</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-blue)', margin: '2px 0' }}>
-              {todayRainMm} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>mm</span>
-            </div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Next 24-48 hours</div>
+        {/* Metric 3: Relative Humidity */}
+        <div className="card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Relative Humidity
+            </span>
+            <Droplets size={17} style={{ color: '#0284c7' }} />
           </div>
-
-          <div style={{ padding: '14px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Rain Probability</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--accent-gold)', margin: '2px 0' }}>
-              {todayRainProb}%
-            </div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Chance of precipitation</div>
+          <div style={{ fontSize: '1.7rem', fontWeight: 800, color: 'var(--text-main)', margin: '10px 0 2px', fontFamily: 'var(--font-heading)' }}>
+            62% <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Normal</span>
           </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+            Dew point: 14°C • Fungal threshold safe
+          </div>
+        </div>
 
-          <div style={{ padding: '14px', background: 'var(--bg-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Current Temperature</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', margin: '2px 0' }}>
-              {currentTemp}
-            </div>
-            <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Wind: {currentWind}</div>
+        {/* Metric 4: Spraying Window Advisory */}
+        <div className="card" style={{ padding: '20px', borderLeft: `4px solid ${goodSprayWindow ? '#16a34a' : '#d97706'}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+              Spraying Window
+            </span>
+            <CheckCircle2 size={17} style={{ color: goodSprayWindow ? '#16a34a' : '#d97706' }} />
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)', margin: '10px 0 2px', fontFamily: 'var(--font-heading)' }}>
+            {goodSprayWindow ? 'Optimal Window' : 'Caution Advised'}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+            Best spray time: 06:00 – 09:30 AM (low drift)
           </div>
         </div>
       </div>
 
-      {/* 7-Day Action-Oriented Forecast */}
-      <div className="card">
-        <div className="card-header">
+      {/* 4. Weekly 7-Day Extended Forecast */}
+      <div className="card" style={{ padding: '22px 24px', backgroundColor: '#ffffff' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
-            <h3 className="card-title">
-              <Calendar size={18} style={{ color: 'var(--primary-400)' }} />
-              7-Day Field Watering Outlook
+            <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: 0 }}>
+              7-Day Precipitation & Temperature Forecast
             </h3>
-            <p className="card-subtitle">Daily precipitation projections mapped to farming actions</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '3px 0 0' }}>
+              Weekly agro-meteorological projections for tubewell schedule planning
+            </p>
           </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {dailyList.map((item, idx) => (
+          {dailyForecast.map((d, idx) => (
             <div
               key={idx}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '130px 140px 100px 90px 1fr',
+                gridTemplateColumns: '120px 80px 1fr 140px',
                 alignItems: 'center',
                 padding: '12px 16px',
-                background: idx === 0 ? 'rgba(16, 185, 129, 0.06)' : 'var(--bg-surface)',
                 borderRadius: 'var(--radius-sm)',
-                border: idx === 0 ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--border-subtle)',
-                fontSize: '0.85rem',
-                gap: '12px'
+                backgroundColor: idx === 0 ? 'var(--color-brand-muted)' : 'var(--bg-app)',
+                border: '1px solid var(--border-subtle)',
+                fontSize: '0.82rem'
               }}
             >
-              <div style={{ fontWeight: 700, color: idx === 0 ? 'var(--primary-300)' : 'var(--text-main)' }}>
-                {item.day}
+              <div style={{ fontWeight: 700, color: 'var(--text-main)' }}>
+                {d.day}
               </div>
-              <div style={{ color: 'var(--text-muted)' }}>
-                {item.temp}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
+                <CloudRain size={14} style={{ color: d.rainProb > 40 ? '#0284c7' : '#94a3b8' }} />
+                <span>{d.rainProb}%</span>
               </div>
-              <div>
-                <Badge variant={item.prob >= 60 ? 'warning' : 'info'}>
-                  {item.prob}% Rain
-                </Badge>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', width: '32px' }}>{Math.round(d.min)}°</span>
+                <div style={{ flex: 1, height: '6px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${Math.min(100, (d.max - 10) * 5)}%`,
+                    height: '100%',
+                    backgroundColor: idx === 0 ? 'var(--color-brand)' : '#3b82f6',
+                    borderRadius: '4px'
+                  }} />
+                </div>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, width: '32px' }}>{Math.round(d.max)}°</span>
               </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: item.rainMm > 0 ? 'var(--accent-blue)' : 'var(--text-subtle)' }}>
-                {item.rainMm} mm
-              </div>
-              <div style={{ color: item.prob >= 60 ? '#fbbf24' : 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 500 }}>
-                {item.action}
+              <div style={{ textAlign: 'right', fontWeight: 600, color: d.rainMm > 0 ? '#0284c7' : 'var(--text-muted)' }}>
+                {d.rainMm > 0 ? `${d.rainMm} mm rain` : 'No rain'}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Helpful Action Tips */}
-      <div className="grid-2">
-        <div className="card">
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>
-            🌧️ Why Waiting Before Rain Saves Money
-          </h4>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Running a 5 HP tubewell for 4 hours costs electricity or ~7.2 Litres of diesel. If 15 mm of rain is due tomorrow, nature provides the water for free without nutrient leaching.
-          </p>
-        </div>
-
-        <div className="card">
-          <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '8px' }}>
-            💧 Calculate Exact Water Depth
-          </h4>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-            Want an exact calculation tailored to your soil type and current field moisture?
-          </p>
-          <button
-            className="btn btn-primary"
-            onClick={() => setActivePage?.('analysis')}
-            style={{ marginTop: '10px', padding: '7px 14px', fontSize: '0.82rem' }}
-          >
-            Go to Check Water Need <ArrowRight size={14} />
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

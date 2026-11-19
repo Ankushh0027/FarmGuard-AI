@@ -45,3 +45,14 @@ yarn-debug.log*
 yarn-error.log*
 dist/
 .next/
+
+# Large Media & Screen Recordings
+recorded_videos/
+*.mp4
+*.webm
+*.mp3
+artifacts/audio/
+artifacts/*.png
+!artifacts/verification/
+
+
